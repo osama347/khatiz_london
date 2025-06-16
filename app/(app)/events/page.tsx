@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { SidebarTrigger } from "@/components/ui/sidebar";
+
 import { CalendarWidget } from "@/components/calendar-widget";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Plus, MapPin, User } from "lucide-react";
+import { Plus} from "lucide-react";
 import { CalendarIcon } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/popover";
 import { parseDate } from "chrono-node";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+
 import { Calendar } from "@/components/ui/calendar";
 
 const supabase = createClient();
@@ -203,16 +203,16 @@ export default function CalendarPage() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
+  // const formatDate = (dateString: string) => {
+  //   return new Date(dateString).toLocaleDateString("en-US", {
+  //     weekday: "long",
+  //     year: "numeric",
+  //     month: "long",
+  //     day: "numeric",
+  //     hour: "2-digit",
+  //     minute: "2-digit",
+  //   });
+  // };
 
   if (loading) {
     return (
