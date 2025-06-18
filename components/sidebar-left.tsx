@@ -70,7 +70,7 @@ export function SidebarLeft({
         <NavMain items={navMainWithActive} />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser  />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

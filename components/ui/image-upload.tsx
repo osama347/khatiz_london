@@ -3,14 +3,16 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ImageIcon, Trash2 } from "lucide-react";
 
-interface ImageUploadProps extends React.HTMLAttributes<HTMLDivElement> {
+interface ImageUploadProps {
   value?: string;
   onChange: (value?: string) => void;
   disabled?: boolean;
+  className?: string; // keep for styling
+  style?: React.CSSProperties; // optional: common with div props
 }
 
 const ImageUpload = React.forwardRef<HTMLDivElement, ImageUploadProps>(
-  ({ className, value, onChange, disabled, ...props }, ref) => {
+  ({ className, style, value, onChange, disabled, ...props }, ref) => {
     const [preview, setPreview] = React.useState<string | undefined>(value);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -40,6 +42,7 @@ const ImageUpload = React.forwardRef<HTMLDivElement, ImageUploadProps>(
           disabled && "opacity-50 cursor-not-allowed",
           className
         )}
+        style={style}
         {...props}
       >
         <input
