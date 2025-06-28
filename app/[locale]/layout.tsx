@@ -17,7 +17,13 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
 });
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default function AppLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: { locale: string };
+}) {
   return (
     <div className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
       <SidebarProvider>
@@ -30,4 +36,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </SidebarProvider>
     </div>
   );
+}
+
+export function generateStaticParams() {
+  return [{ locale: "en" }, { locale: "ps" }];
 }

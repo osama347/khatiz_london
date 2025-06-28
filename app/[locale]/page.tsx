@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, use } from "react";
 import {
   Card,
   CardContent,
@@ -65,7 +65,25 @@ interface Activity {
   icon: React.ReactNode;
 }
 
-export default function Dashboard() {
+const translations = {
+  en: {
+    greeting: "Hello",
+    welcome: "Welcome to our site!",
+  },
+  ps: {
+    greeting: "سلام",
+    welcome: "زموږ په ویب پاڼه کې ښه راغلاست!",
+  },
+};
+
+type Locale = keyof typeof translations;
+
+export default function Dashboard({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const resolvedParams = use(params);
   const [stats, setStats] = useState<DashboardStats>({
     totalMembers: 0,
     upcomingEvents: 0,
@@ -85,6 +103,11 @@ export default function Dashboard() {
       description: string;
     }>
   >([]);
+
+  const locale: Locale = (
+    resolvedParams.locale in translations ? resolvedParams.locale : "en"
+  ) as Locale;
+  const t = translations[locale];
 
   useEffect(() => {
     fetchDashboardStats();
@@ -462,7 +485,6 @@ export default function Dashboard() {
                                 )}
                               </div>
                             </div>
-                            
                           </div>
                         </div>
                         {index <

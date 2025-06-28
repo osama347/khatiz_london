@@ -18,6 +18,7 @@ import {
   RealtimeChannel,
   REALTIME_CHANNEL_STATES,
 } from "@supabase/supabase-js";
+import LanguageSwitcher from "@/components/language-switcher";
 
 const supabase = createClient();
 
@@ -95,8 +96,7 @@ export function Header() {
             console.log("Successfully subscribed to notifications");
             setIsSubscribed(true);
             // Clear any existing reconnect timeout
-            
-          } 
+          }
         });
 
       channelRef.current = channel;
@@ -272,6 +272,7 @@ export function Header() {
         <Breadcrumb />
       </div>
       <div className="flex items-center gap-2">
+        <LanguageSwitcher />
         <Popover>
           <PopoverTrigger asChild>
             <Button
