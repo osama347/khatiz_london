@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "analyze": "ANALYZE=true next build",
+    "build:prod": "NODE_ENV=production next build",
+    "start:prod": "NODE_ENV=production next start"
   },
   "dependencies": {
     "@netlify/next": "^1.4.9",
@@ -29,6 +32,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "i18next": "^25.2.1",
+    "lodash.debounce": "^4.0.8",
     "lucide-react": "^0.515.0",
     "next": "15.3.3",
     "next-i18next": "^15.4.2",
@@ -44,6 +48,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@types/lodash.debounce": "^4.0.9",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

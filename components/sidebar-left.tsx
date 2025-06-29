@@ -15,31 +15,50 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 
+const translations = {
+  en: {
+    home: "Home",
+    members: "Members",
+    payments: "Payments",
+    reports: "Reports",
+    events: "Events",
+  },
+  ps: {
+    home: "کور",
+    members: "غړي",
+    payments: "تادیې",
+    reports: "راپورونه",
+    events: "پیښې",
+  },
+};
+
+type Locale = keyof typeof translations;
+
 // This is sample data.
-const data = {
+const getNavData = (locale: Locale) => ({
   navMain: [
     {
-      title: "Home",
+      title: translations[locale].home,
       url: "/",
       icon: Home,
     },
     {
-      title: "Members",
+      title: translations[locale].members,
       url: "/members",
       icon: Users,
     },
     {
-      title: "Payments",
+      title: translations[locale].payments,
       url: "/payments",
       icon: CreditCard,
     },
     {
-      title: "Reports",
+      title: translations[locale].reports,
       url: "/reports",
       icon: BarChart,
     },
     {
-      title: "Events",
+      title: translations[locale].events,
       url: "/events",
       icon: Calendar,
     },
@@ -49,14 +68,31 @@ const data = {
     email: "m@example.com",
     avatar: "/avatars/shadcn.jpg",
   },
-};
+});
 
 export function SidebarLeft({
+  locale = "en",
   ...props
-}: React.ComponentProps<typeof Sidebar>) {
+}: React.ComponentProps<typeof Sidebar> & { locale?: Locale }) {
   const pathname = usePathname();
+  const currentLocale: Locale = (
+    locale in translations ? locale : "en"
+  ) as Locale;
 
-  const navMainWithActive = data.navMain.map((item) => ({
+  const data = getNavData(currentLocale);
+
+  // Detect current locale from pathname
+  const segments = pathname.split("/");
+  const detectedLocale =
+    segments[1] === "en" || segments[1] === "ps" ? segments[1] : "en";
+
+  // Add locale prefix to all navigation URLs
+  const navMainWithLocale = data.navMain.map((item) => ({
+    ...item,
+    url: `/${detectedLocale}${item.url}`,
+  }));
+
+  const navMainWithActive = navMainWithLocale.map((item) => ({
     ...item,
     isActive: pathname === item.url,
   }));
@@ -70,7 +106,7 @@ export function SidebarLeft({
         <NavMain items={navMainWithActive} />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser  />
+        <NavUser />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

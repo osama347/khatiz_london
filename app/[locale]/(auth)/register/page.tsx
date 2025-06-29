@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { use } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,12 +15,51 @@ import {
 } from "@/components/ui/card";
 import Link from "next/link";
 
-export default function RegisterPage() {
+export default function RegisterPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const resolvedParams = use(params);
+  const locale = resolvedParams.locale as "en" | "ps";
+
+  const translations = {
+    en: {
+      createAccount: "Create Account",
+      signUpToGetStarted: "Sign up to get started with your account",
+      fullName: "Full Name",
+      fullNamePlaceholder: "Enter your full name",
+      email: "Email",
+      emailPlaceholder: "Enter your email",
+      password: "Password",
+      passwordPlaceholder: "Create a password",
+      creatingAccount: "Creating account...",
+      createAccountButton: "Create Account",
+      alreadyHaveAccount: "Already have an account?",
+      signIn: "Sign in",
+    },
+    ps: {
+      createAccount: "حساب جوړ کړئ",
+      signUpToGetStarted: "د خپل حساب سره د پیل کولو لپاره نوم لیکنه وکړئ",
+      fullName: "بشپړ نوم",
+      fullNamePlaceholder: "خپل بشپړ نوم داخل کړئ",
+      email: "بریښنالیک",
+      emailPlaceholder: "خپل بریښنالیک داخل کړئ",
+      password: "پټنوم",
+      passwordPlaceholder: "یو پټنوم جوړ کړئ",
+      creatingAccount: "حساب جوړ کېږي...",
+      createAccountButton: "حساب جوړ کړئ",
+      alreadyHaveAccount: "دمخه حساب لرئ؟",
+      signIn: "ننوتل",
+    },
+  };
+
+  const t = translations[locale];
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-
 
   // const handleSubmit = async (e: React.FormEvent) => {
   //   e.preventDefault();
@@ -38,42 +78,42 @@ export default function RegisterPage() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl font-bold text-center">
-            Create Account
+            {t.createAccount}
           </CardTitle>
           <CardDescription className="text-center">
-            Sign up to get started with your account
+            {t.signUpToGetStarted}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form  className="space-y-6">
+          <form className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="fullName">Full Name</Label>
+              <Label htmlFor="fullName">{t.fullName}</Label>
               <Input
                 id="fullName"
                 type="text"
-                placeholder="Enter your full name"
+                placeholder={t.fullNamePlaceholder}
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t.email}</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="Enter your email"
+                placeholder={t.emailPlaceholder}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t.password}</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="Create a password"
+                placeholder={t.passwordPlaceholder}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -83,17 +123,17 @@ export default function RegisterPage() {
               {isLoading ? (
                 <>
                   <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  Creating account...
+                  {t.creatingAccount}
                 </>
               ) : (
-                "Create Account"
+                t.createAccountButton
               )}
             </Button>
           </form>
           <div className="mt-4 text-center text-sm">
-            <span className="text-gray-600">Already have an account? </span>
+            <span className="text-gray-600">{t.alreadyHaveAccount} </span>
             <Link href="/login" className="text-primary hover:underline">
-              Sign in
+              {t.signIn}
             </Link>
           </div>
         </CardContent>

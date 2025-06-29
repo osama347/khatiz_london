@@ -7,14 +7,19 @@ import {
 import { SidebarLeft } from "@/components/sidebar-left";
 import { Header } from "@/components/header";
 
+// Optimize font loading
 const geistSans = Geist({
   subsets: ["latin"],
   variable: "--font-geist-sans",
+  display: "swap",
+  preload: true,
 });
 
 const geistMono = Geist_Mono({
   subsets: ["latin"],
   variable: "--font-geist-mono",
+  display: "swap",
+  preload: true,
 });
 
 export default function AppLayout({

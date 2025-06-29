@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, use } from "react";
 import { createClient } from "@/utils/supabase/client";
 import {
   Card,
@@ -51,6 +51,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { getTranslations, Locale as SupportedLocale } from "@/lib/translations";
+import { useMemo, useCallback } from "react";
 
 interface Payment {
   id: string;
@@ -85,7 +87,17 @@ const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042"];
 
 type ReportType = "overview" | "monthly" | "member" | "payment";
 
-export default function ReportsPage() {
+export default function ReportsPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const resolvedParams = use(params);
+  const locale: SupportedLocale = ["en", "ps"].includes(resolvedParams.locale)
+    ? (resolvedParams.locale as SupportedLocale)
+    : "en";
+
+  const [t, setT] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -94,6 +106,11 @@ export default function ReportsPage() {
   const [selectedReport, setSelectedReport] = useState<ReportType>("overview");
   const supabase = createClient();
   const reportRef = useRef<HTMLDivElement>(null);
+
+  // Load translations on mount or locale change
+  useEffect(() => {
+    getTranslations(locale).then(setT);
+  }, [locale]);
 
   useEffect(() => {
     async function loadData() {
@@ -113,7 +130,7 @@ export default function ReportsPage() {
 
         if (paymentsError) {
           console.error("Payments error:", paymentsError);
-          toast.error(`Failed to load payments: ${paymentsError.message}`);
+          toast.error(`${t.failedToLoadPayments}: ${paymentsError.message}`);
           return;
         }
 
@@ -125,12 +142,12 @@ export default function ReportsPage() {
 
         if (membersError) {
           console.error("Members error:", membersError);
-          toast.error(`Failed to load members: ${membersError.message}`);
+          toast.error(`${t.failedToLoadMembers}: ${membersError.message}`);
           return;
         }
 
         if (!paymentsData || !membersData) {
-          toast.error("No data received from the server");
+          toast.error(t.noDataReceived);
           return;
         }
 
@@ -143,7 +160,7 @@ export default function ReportsPage() {
       } catch (error) {
         console.error("Error loading data:", error);
         toast.error(
-          error instanceof Error ? error.message : "Failed to load data"
+          error instanceof Error ? error.message : t.failedToLoadData
         );
       } finally {
         setLoading(false);
@@ -153,25 +170,29 @@ export default function ReportsPage() {
     loadData();
   }, [supabase]);
 
-  // Calculate total revenue
-  const totalRevenue = payments.reduce(
-    (sum, payment) => sum + payment.amount,
-    0
+  // Memoized calculations
+  const totalRevenue = useMemo(
+    () => payments.reduce((sum, payment) => sum + payment.amount, 0),
+    [payments]
+  );
+  const averagePayment = useMemo(
+    () => (payments.length > 0 ? totalRevenue / payments.length : 0),
+    [payments, totalRevenue]
+  );
+  const activeMembers = useMemo(
+    () => members.filter((m) => m.status === "Active").length,
+    [members]
+  );
+  const inactiveMembers = useMemo(
+    () => members.filter((m) => m.status === "Inactive").length,
+    [members]
+  );
+  const suspendedMembers = useMemo(
+    () => members.filter((m) => m.status === "Suspended").length,
+    [members]
   );
 
-  // Calculate average payment amount
-  const averagePayment =
-    payments.length > 0 ? totalRevenue / payments.length : 0;
-
-  // Calculate member statistics
-  const activeMembers = members.filter((m) => m.status === "Active").length;
-  const inactiveMembers = members.filter((m) => m.status === "Inactive").length;
-  const suspendedMembers = members.filter(
-    (m) => m.status === "Suspended"
-  ).length;
-
-  // Prepare data for payment trends chart
-  const getPaymentTrendsData = () => {
+  const getPaymentTrendsData = useCallback(() => {
     const now = new Date();
     const data = [];
     let startDate: Date;
@@ -227,32 +248,37 @@ export default function ReportsPage() {
     }
 
     return data;
-  };
+  }, [payments, timeRange]);
 
-  // Prepare data for member status pie chart
-  const memberStatusData = [
-    { name: "Active", value: activeMembers },
-    { name: "Inactive", value: inactiveMembers },
-    { name: "Suspended", value: suspendedMembers },
-  ];
+  const memberStatusData = useMemo(
+    () => [
+      { name: t?.Active || "Active", value: activeMembers },
+      { name: t?.Inactive || "Inactive", value: inactiveMembers },
+      { name: t?.Suspended || "Suspended", value: suspendedMembers },
+    ],
+    [activeMembers, inactiveMembers, suspendedMembers, t]
+  );
 
-  // Prepare data for top paying members
-  const topPayingMembers = Object.entries(
-    payments.reduce((acc: { [key: string]: number }, payment) => {
-      const memberName = payment.member?.name || "Unknown";
-      acc[memberName] = (acc[memberName] || 0) + payment.amount;
-      return acc;
-    }, {})
-  )
-    .map(([name, amount]) => ({ name, amount }))
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 5);
+  const topPayingMembers = useMemo(
+    () =>
+      Object.entries(
+        payments.reduce((acc: { [key: string]: number }, payment) => {
+          const memberName = payment.member?.name || t?.Unknown || "Unknown";
+          acc[memberName] = (acc[memberName] || 0) + payment.amount;
+          return acc;
+        }, {})
+      )
+        .map(([name, amount]) => ({ name, amount }))
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5),
+    [payments, t]
+  );
 
-  const handlePrint = () => {
+  const handlePrint = useCallback(() => {
     window.print();
-  };
+  }, []);
 
-  const handleDownloadPDF = async () => {
+  const handleDownloadPDF = useCallback(async () => {
     try {
       // This will be implemented once react-to-pdf is installed
       toast.info(
@@ -262,9 +288,9 @@ export default function ReportsPage() {
       console.error("Error generating PDF:", error);
       toast.error("Failed to generate PDF report");
     }
-  };
+  }, []);
 
-  const handleDownloadCSV = () => {
+  const handleDownloadCSV = useCallback(() => {
     try {
       // Prepare data for CSV
       const csvData = [
@@ -316,40 +342,49 @@ export default function ReportsPage() {
       console.error("Error generating CSV:", error);
       toast.error("Failed to generate CSV report");
     }
-  };
+  }, [
+    totalRevenue,
+    averagePayment,
+    activeMembers,
+    members.length,
+    topPayingMembers,
+  ]);
 
-  // Function to process payments into monthly data
-  const processMonthlyPayments = (payments: Payment[]): MonthlyPayment[] => {
-    const monthlyMap = new Map<string, MonthlyPayment>();
+  const processMonthlyPayments = useCallback(
+    (payments: Payment[]): MonthlyPayment[] => {
+      const monthlyMap = new Map<string, MonthlyPayment>();
 
-    payments.forEach((payment) => {
-      const month = format(new Date(payment.paid_on), "MMMM yyyy");
+      payments.forEach((payment) => {
+        const month = format(new Date(payment.paid_on), "MMMM yyyy");
 
-      if (!monthlyMap.has(month)) {
-        monthlyMap.set(month, {
-          month,
-          totalAmount: 0,
-          paymentCount: 0,
-          members: [],
+        if (!monthlyMap.has(month)) {
+          monthlyMap.set(month, {
+            month,
+            totalAmount: 0,
+            paymentCount: 0,
+            members: [],
+          });
+        }
+
+        const monthData = monthlyMap.get(month)!;
+        monthData.totalAmount += payment.amount;
+        monthData.paymentCount += 1;
+        monthData.members.push({
+          name: payment.member?.name || "Unknown",
+          amount: payment.amount,
+          paid_on: payment.paid_on,
         });
-      }
-
-      const monthData = monthlyMap.get(month)!;
-      monthData.totalAmount += payment.amount;
-      monthData.paymentCount += 1;
-      monthData.members.push({
-        name: payment.member?.name || "Unknown",
-        amount: payment.amount,
-        paid_on: payment.paid_on,
       });
-    });
 
-    return Array.from(monthlyMap.values()).sort(
-      (a, b) => new Date(b.month).getTime() - new Date(a.month).getTime()
-    );
-  };
+      return Array.from(monthlyMap.values()).sort(
+        (a, b) => new Date(b.month).getTime() - new Date(a.month).getTime()
+      );
+    },
+    []
+  );
 
-  const renderReportContent = () => {
+  const renderReportContent = useCallback(() => {
+    if (!t) return <div />;
     switch (selectedReport) {
       case "overview":
         return (
@@ -358,7 +393,7 @@ export default function ReportsPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    Total Revenue
+                    {t.totalRevenue}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -368,14 +403,14 @@ export default function ReportsPage() {
                       currency: "USD",
                     }).format(totalRevenue)}
                   </div>
-                  <p className="text-xs text-muted-foreground">All time</p>
+                  <p className="text-xs text-muted-foreground">{t.allTime}</p>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    Average Payment
+                    {t.averagePayment}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -385,20 +420,8 @@ export default function ReportsPage() {
                       currency: "USD",
                     }).format(averagePayment)}
                   </div>
-                  <p className="text-xs text-muted-foreground">Per payment</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Active Members
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{activeMembers}</div>
                   <p className="text-xs text-muted-foreground">
-                    Current active members
+                    {t.perPayment}
                   </p>
                 </CardContent>
               </Card>
@@ -406,12 +429,26 @@ export default function ReportsPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                   <CardTitle className="text-sm font-medium">
-                    Total Members
+                    {t.activeMembers}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{activeMembers}</div>
+                  <p className="text-xs text-muted-foreground">
+                    {t.currentActiveMembers}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    {t.totalMembers}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{members.length}</div>
-                  <p className="text-xs text-muted-foreground">All time</p>
+                  <p className="text-xs text-muted-foreground">{t.allTime}</p>
                 </CardContent>
               </Card>
             </div>
@@ -419,8 +456,8 @@ export default function ReportsPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
-                  <CardTitle>Payment Trends</CardTitle>
-                  <CardDescription>Payment amounts over time</CardDescription>
+                  <CardTitle>{t.paymentTrends}</CardTitle>
+                  <CardDescription>{t.paymentAmountsOverTime}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="h-[300px]">
@@ -451,9 +488,9 @@ export default function ReportsPage() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Member Status Distribution</CardTitle>
+                  <CardTitle>{t.memberStatusDistribution}</CardTitle>
                   <CardDescription>
-                    Current member status breakdown
+                    {t.currentMemberStatusBreakdown}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -495,9 +532,9 @@ export default function ReportsPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Monthly Payment History</CardTitle>
+                  <CardTitle>{t.monthlyPaymentHistory}</CardTitle>
                   <CardDescription>
-                    Detailed payment history by month
+                    {t.detailedPaymentHistoryByMonth}
                   </CardDescription>
                 </div>
                 <Button
@@ -513,7 +550,7 @@ export default function ReportsPage() {
                         printWindow.document.write(`
                           <html>
                             <head>
-                              <title>Monthly Payment History</title>
+                              <title>${t.monthlyPaymentHistory}</title>
                               <style>
                                 body { font-family: Arial, sans-serif; }
                                 table { width: 100%; border-collapse: collapse; margin: 20px 0; }
@@ -524,7 +561,7 @@ export default function ReportsPage() {
                               </style>
                             </head>
                             <body>
-                              <h1>Monthly Payment History</h1>
+                              <h1>${t.monthlyPaymentHistory}</h1>
                               <h3>Generated on ${format(
                                 new Date(),
                                 "MMMM d, yyyy"
@@ -540,7 +577,7 @@ export default function ReportsPage() {
                   }}
                 >
                   <Printer className="mr-2 h-4 w-4" />
-                  Print Monthly Report
+                  {t.printMonthlyReport}
                 </Button>
               </div>
             </CardHeader>
@@ -549,10 +586,10 @@ export default function ReportsPage() {
                 <Table id="monthly-payment-table">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Month</TableHead>
-                      <TableHead>Member</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Payment Date</TableHead>
+                      <TableHead>{t.month}</TableHead>
+                      <TableHead>{t.member}</TableHead>
+                      <TableHead>{t.amount}</TableHead>
+                      <TableHead>{t.paymentDate}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -563,12 +600,12 @@ export default function ReportsPage() {
                           className="month-header"
                         >
                           <TableCell colSpan={4}>
-                            {monthData.month} - Total:{" "}
+                            {monthData.month} - {t.total}:{" "}
                             {new Intl.NumberFormat("en-US", {
                               style: "currency",
                               currency: "USD",
                             }).format(monthData.totalAmount)}{" "}
-                            ({monthData.paymentCount} payments)
+                            ({monthData.paymentCount} {t.payments})
                           </TableCell>
                         </TableRow>
                         {monthData.members.map((member, index) => (
@@ -601,8 +638,8 @@ export default function ReportsPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Member Payment History</CardTitle>
-                  <CardDescription>Payment history by member</CardDescription>
+                  <CardTitle>{t.memberPaymentHistory}</CardTitle>
+                  <CardDescription>{t.paymentHistoryByMember}</CardDescription>
                 </div>
                 <Button
                   variant="outline"
@@ -617,7 +654,7 @@ export default function ReportsPage() {
                         printWindow.document.write(`
                           <html>
                             <head>
-                              <title>Member Payment History</title>
+                              <title>${t.memberPaymentHistory}</title>
                               <style>
                                 body { font-family: Arial, sans-serif; }
                                 table { width: 100%; border-collapse: collapse; margin: 20px 0; }
@@ -627,7 +664,7 @@ export default function ReportsPage() {
                               </style>
                             </head>
                             <body>
-                              <h1>Member Payment History</h1>
+                              <h1>${t.memberPaymentHistory}</h1>
                               <h3>Generated on ${format(
                                 new Date(),
                                 "MMMM d, yyyy"
@@ -643,7 +680,7 @@ export default function ReportsPage() {
                   }}
                 >
                   <Printer className="mr-2 h-4 w-4" />
-                  Print Member Report
+                  {t.printMemberReport}
                 </Button>
               </div>
             </CardHeader>
@@ -652,11 +689,11 @@ export default function ReportsPage() {
                 <Table id="member-payment-table">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Member</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Total Payments</TableHead>
-                      <TableHead>Last Payment</TableHead>
-                      <TableHead>Total Amount</TableHead>
+                      <TableHead>{t.member}</TableHead>
+                      <TableHead>{t.status}</TableHead>
+                      <TableHead>{t.totalPayments}</TableHead>
+                      <TableHead>{t.lastPayment}</TableHead>
+                      <TableHead>{t.totalAmount}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -697,7 +734,7 @@ export default function ReportsPage() {
                                   new Date(lastPayment.paid_on),
                                   "MMM d, yyyy"
                                 )
-                              : "No payments"}
+                              : t.noPayments}
                           </TableCell>
                           <TableCell>
                             {new Intl.NumberFormat("en-US", {
@@ -721,8 +758,8 @@ export default function ReportsPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Payment Details</CardTitle>
-                  <CardDescription>Detailed payment records</CardDescription>
+                  <CardTitle>{t.paymentDetails}</CardTitle>
+                  <CardDescription>{t.detailedPaymentRecords}</CardDescription>
                 </div>
                 <Button
                   variant="outline"
@@ -737,7 +774,7 @@ export default function ReportsPage() {
                         printWindow.document.write(`
                           <html>
                             <head>
-                              <title>Payment Details</title>
+                              <title>${t.paymentDetails}</title>
                               <style>
                                 body { font-family: Arial, sans-serif; }
                                 table { width: 100%; border-collapse: collapse; margin: 20px 0; }
@@ -746,7 +783,7 @@ export default function ReportsPage() {
                               </style>
                             </head>
                             <body>
-                              <h1>Payment Details</h1>
+                              <h1>${t.paymentDetails}</h1>
                               <h3>Generated on ${format(
                                 new Date(),
                                 "MMMM d, yyyy"
@@ -762,7 +799,7 @@ export default function ReportsPage() {
                   }}
                 >
                   <Printer className="mr-2 h-4 w-4" />
-                  Print Payment Report
+                  {t.printPaymentReport}
                 </Button>
               </div>
             </CardHeader>
@@ -771,10 +808,10 @@ export default function ReportsPage() {
                 <Table id="payment-details-table">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Member</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Valid Until</TableHead>
+                      <TableHead>{t.date}</TableHead>
+                      <TableHead>{t.member}</TableHead>
+                      <TableHead>{t.amount}</TableHead>
+                      <TableHead>{t.validUntil}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -811,7 +848,26 @@ export default function ReportsPage() {
           </Card>
         );
     }
-  };
+  }, [
+    selectedReport,
+    t,
+    payments,
+    members,
+    monthlyPayments,
+    memberStatusData,
+    getPaymentTrendsData,
+    handlePrint,
+    handleDownloadPDF,
+    handleDownloadCSV,
+  ]);
+
+  if (!t) {
+    return (
+      <div className="flex justify-center items-center h-96">
+        <Skeleton className="h-8 w-48" />
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -872,23 +928,25 @@ export default function ReportsPage() {
               onValueChange={(value: ReportType) => setSelectedReport(value)}
             >
               <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Select report type" />
+                <SelectValue placeholder={t.selectReportType} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="overview">Overview Dashboard</SelectItem>
-                <SelectItem value="monthly">Monthly Report</SelectItem>
-                <SelectItem value="member">Member Report</SelectItem>
-                <SelectItem value="payment">Payment Details</SelectItem>
+                <SelectItem value="overview">{t.overviewDashboard}</SelectItem>
+                <SelectItem value="monthly">{t.monthlyReport}</SelectItem>
+                <SelectItem value="member">{t.memberReport}</SelectItem>
+                <SelectItem value="payment">
+                  {t.paymentDetailsReport}
+                </SelectItem>
               </SelectContent>
             </Select>
             <Select value={timeRange} onValueChange={setTimeRange}>
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Select time range" />
+                <SelectValue placeholder={t.selectTimeRange} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="week">Last 7 Days</SelectItem>
-                <SelectItem value="month">Last 30 Days</SelectItem>
-                <SelectItem value="year">Last 12 Months</SelectItem>
+                <SelectItem value="week">{t.last7Days}</SelectItem>
+                <SelectItem value="month">{t.last30Days}</SelectItem>
+                <SelectItem value="year">{t.last12Months}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -897,21 +955,21 @@ export default function ReportsPage() {
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">
                   <Download className="mr-2 h-4 w-4" />
-                  Download
+                  {t.download}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
                 <DropdownMenuItem onClick={handleDownloadCSV}>
-                  Download as CSV
+                  {t.downloadAsCSV}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleDownloadPDF}>
-                  Download as PDF
+                  {t.downloadAsPDF}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <Button variant="outline" size="sm" onClick={handlePrint}>
               <Printer className="mr-2 h-4 w-4" />
-              Print
+              {t.print}
             </Button>
           </div>
         </div>

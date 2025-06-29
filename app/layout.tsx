@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
-
 import { Toaster } from "sonner";
-
-const inter = Inter({ subsets: ["latin"] });
+import { PerformanceMonitor } from "@/components/performance-monitor";
 
 export const metadata: Metadata = {
   title: "East London",
   description: "East London Database Management System",
+  // Performance optimizations
+  viewport: "width=device-width, initial-scale=1",
+  themeColor: "#000000",
 };
 
 export default function RootLayout({
@@ -17,10 +17,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html>
-      <body className={inter.className}>
+    <html lang="en">
+      <head>
+        {/* Preload critical resources */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+      </head>
+      <body>
         {children}
         <Toaster />
+        <PerformanceMonitor />
       </body>
     </html>
   );

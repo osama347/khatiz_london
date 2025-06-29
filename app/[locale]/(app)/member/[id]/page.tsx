@@ -31,6 +31,80 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { use } from "react";
+
+const translations = {
+  en: {
+    backToMembers: "Back to Members",
+    memberDetails: "Member Details",
+    editMember: "Edit Member",
+    memberNotFound: "Member not found",
+    memberNotFoundDescription:
+      "The member you're looking for doesn't exist or has been removed.",
+    memberProfile: "Member Profile",
+    personalInfoAndMembership: "Personal information and membership details",
+    memberId: "Member ID",
+    contactInformation: "Contact Information",
+    born: "Born",
+    membershipDetails: "Membership Details",
+    member: "Member",
+    joined: "Joined",
+    monthlyFee: "Monthly Fee",
+    totalPaid: "Total Paid",
+    paymentHistory: "Payment History",
+    monthlyPaymentStatus: "Monthly payment status and records",
+    year: "Year",
+    paid: "Paid",
+    pending: "Pending",
+    overdue: "Overdue",
+    total: "Total",
+    paymentStatus: "Payment Status",
+    due: "Due",
+    noPaymentDue: "No Payment Due",
+    recordPayment: "Record Payment",
+    sendReminder: "Send Reminder",
+    viewCalendar: "View Calendar",
+    active: "Active",
+    inactive: "Inactive",
+    suspended: "Suspended",
+  },
+  ps: {
+    backToMembers: "غړو ته بیرته",
+    memberDetails: "د غړي تفصیلات",
+    editMember: "غړی سم کړئ",
+    memberNotFound: "غړی و نه موندل شو",
+    memberNotFoundDescription:
+      "هغه غړی چې تاسو یې لټون کوي شتون نلري یا لرې شوی دی.",
+    memberProfile: "د غړي پروفایل",
+    personalInfoAndMembership: "شخصي معلومات او د غړیتوب تفصیلات",
+    memberId: "د غړي شمیره",
+    contactInformation: "د اړیکې معلومات",
+    born: "زیږیدلی",
+    membershipDetails: "د غړیتوب تفصیلات",
+    member: "غړی",
+    joined: "شامل شو",
+    monthlyFee: "میاشتنی فیس",
+    totalPaid: "ټول ورکړل شوی",
+    paymentHistory: "د تادیو تاریخ",
+    monthlyPaymentStatus: "د میاشتنیو تادیو حالت او ثبتونه",
+    year: "کال",
+    paid: "ورکړل شوی",
+    pending: "په تمه کې",
+    overdue: "ورکړل شوی",
+    total: "ټول",
+    paymentStatus: "د تادیې حالت",
+    due: "اړین",
+    noPaymentDue: "هیڅ تادیه اړینه نه ده",
+    recordPayment: "تادیه ثبت کړئ",
+    sendReminder: "یادونه واستوئ",
+    viewCalendar: "کالندر وګورئ",
+    active: "فعال",
+    inactive: "غیرفعال",
+    suspended: "موقوف",
+  },
+};
+
+type Locale = keyof typeof translations;
 
 interface PaymentRecord {
   month: number;
@@ -57,8 +131,18 @@ interface MemberData {
   paymentHistory: PaymentRecord[];
 }
 
-export default function MemberDetailPage() {
-  const params = useParams();
+export default function MemberDetailPage({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}) {
+  const resolvedParams = use(params);
+  const locale: Locale = (
+    resolvedParams.locale in translations ? resolvedParams.locale : "en"
+  ) as Locale;
+  const t = translations[locale];
+
+  const params2 = useParams();
   const [memberData, setMemberData] = useState<MemberData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -85,7 +169,7 @@ export default function MemberDetailPage() {
         const { data, error } = await supabase
           .from("members")
           .select("*")
-          .eq("id", params.id)
+          .eq("id", params2.id)
           .single();
 
         if (error) throw error;
@@ -116,7 +200,7 @@ export default function MemberDetailPage() {
     }
 
     loadMember();
-  }, [params.id, supabase]);
+  }, [params2.id, supabase]);
 
   const getPaymentForMonth = (
     month: number,
@@ -271,25 +355,25 @@ export default function MemberDetailPage() {
   if (!memberData) {
     return (
       <div className="flex flex-col">
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+        {/* <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
           <div className="flex flex-1 items-center gap-2">
             <Link href="/members">
               <Button variant="ghost" size="sm" className="gap-2">
                 <ArrowLeft className="h-4 w-4" />
-                Back to Members
+                {t.backToMembers}
               </Button>
             </Link>
             <div className="h-4 w-px bg-border" />
-            <h1 className="text-lg font-semibold">Member Details</h1>
+            <h1 className="text-lg font-semibold">{t.memberDetails}</h1>
           </div>
-        </header>
+        </header> */}
 
         <div className="flex-1 flex items-center justify-center p-8">
           <div className="text-center">
-            <h2 className="text-2xl font-bold">Member not found</h2>
+            <h2 className="text-2xl font-bold">{t.memberNotFound}</h2>
             <p className="mt-2 text-muted-foreground">
-              The member you're looking for doesn't exist or has been removed.
+              {t.memberNotFoundDescription}
             </p>
           </div>
         </div>
@@ -299,32 +383,30 @@ export default function MemberDetailPage() {
 
   return (
     <div className="flex flex-col">
-      <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
+      {/* <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
         <SidebarTrigger className="-ml-1" />
         <div className="flex flex-1 items-center gap-2">
           <Link href="/members">
             <Button variant="ghost" size="sm" className="gap-2">
               <ArrowLeft className="h-4 w-4" />
-              Back to Members
+              {t.backToMembers}
             </Button>
           </Link>
           <div className="h-4 w-px bg-border" />
-          <h1 className="text-lg font-semibold">Member Details</h1>
+          <h1 className="text-lg font-semibold">{t.memberDetails}</h1>
         </div>
         <Button className="gap-2">
           <Edit className="h-4 w-4" />
-          Edit Member
+          {t.editMember}
         </Button>
-      </header>
+      </header> */}
 
       <div className="flex-1 space-y-6 p-4 md:p-8">
         {/* Member Profile Section */}
         <Card>
           <CardHeader>
-            <CardTitle>Member Profile</CardTitle>
-            <CardDescription>
-              Personal information and membership details
-            </CardDescription>
+            <CardTitle>{t.memberProfile}</CardTitle>
+            <CardDescription>{t.personalInfoAndMembership}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-6 md:grid-cols-3">
@@ -345,7 +427,7 @@ export default function MemberDetailPage() {
                 <div className="text-center">
                   <h2 className="text-xl font-semibold">{memberData.name}</h2>
                   <p className="text-sm text-muted-foreground">
-                    Member ID: {memberData.id}
+                    {t.memberId}: {memberData.id}
                   </p>
                   <div className="mt-2">
                     {getStatusBadge(memberData.status)}
@@ -355,7 +437,7 @@ export default function MemberDetailPage() {
 
               {/* Contact Information */}
               <div className="space-y-4">
-                <h3 className="text-lg font-medium">Contact Information</h3>
+                <h3 className="text-lg font-medium">{t.contactInformation}</h3>
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
                     <Mail className="h-4 w-4 text-muted-foreground" />
@@ -372,7 +454,7 @@ export default function MemberDetailPage() {
                   <div className="flex items-center gap-3">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm">
-                      Born:{" "}
+                      {t.born}:{" "}
                       {new Date(memberData.dateOfBirth).toLocaleDateString()}
                     </span>
                   </div>
@@ -381,31 +463,31 @@ export default function MemberDetailPage() {
 
               {/* Membership Information */}
               <div className="space-y-4">
-                <h3 className="text-lg font-medium">Membership Details</h3>
+                <h3 className="text-lg font-medium">{t.membershipDetails}</h3>
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
                     <User className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm">
-                      {memberData.membershipType} Member
+                      {t.member}: {memberData.membershipType}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm">
-                      Joined:{" "}
+                      {t.joined}:{" "}
                       {new Date(memberData.dateOfJoining).toLocaleDateString()}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm">
-                      Monthly Fee: ${memberData.monthlyFee}
+                      {t.monthlyFee}: ${memberData.monthlyFee}
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
                     <CreditCard className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm">
-                      Total Paid: ${memberData.totalPaid}
+                      {t.totalPaid}: ${memberData.totalPaid}
                     </span>
                   </div>
                 </div>
@@ -419,13 +501,11 @@ export default function MemberDetailPage() {
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <CardTitle>Payment History</CardTitle>
-                <CardDescription>
-                  Monthly payment status and records
-                </CardDescription>
+                <CardTitle>{t.paymentHistory}</CardTitle>
+                <CardDescription>{t.monthlyPaymentStatus}</CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Year:</span>
+                <span className="text-sm font-medium">{t.year}:</span>
                 <div className="flex gap-1">
                   {Array.from(
                     new Set(
@@ -454,33 +534,31 @@ export default function MemberDetailPage() {
                 <div className="text-2xl font-bold text-green-600">
                   {stats.paidCount}
                 </div>
-                <div className="text-xs text-green-700">Paid</div>
+                <div className="text-xs text-green-700">{t.paid}</div>
               </div>
               <div className="text-center p-3 rounded-lg bg-yellow-50 border border-yellow-200">
                 <div className="text-2xl font-bold text-yellow-600">
                   {stats.pendingCount}
                 </div>
-                <div className="text-xs text-yellow-700">Pending</div>
+                <div className="text-xs text-yellow-700">{t.pending}</div>
               </div>
               <div className="text-center p-3 rounded-lg bg-red-50 border border-red-200">
                 <div className="text-2xl font-bold text-red-600">
                   {stats.overdueCount}
                 </div>
-                <div className="text-xs text-red-700">Overdue</div>
+                <div className="text-xs text-red-700">{t.overdue}</div>
               </div>
               <div className="text-center p-3 rounded-lg bg-blue-50 border border-blue-200">
                 <div className="text-2xl font-bold text-blue-600">
                   {stats.total}
                 </div>
-                <div className="text-xs text-blue-700">Total</div>
+                <div className="text-xs text-blue-700">{t.total}</div>
               </div>
             </div>
 
             {/* Monthly Payment Grid */}
             <div className="space-y-4">
-              <h4 className="text-lg font-medium">
-                {selectedYear} Payment Status
-              </h4>
+              <h4 className="text-lg font-medium">{t.paymentStatus}</h4>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 {months.map((month, index) => {
                   const monthNumber = index + 1;
@@ -532,7 +610,7 @@ export default function MemberDetailPage() {
                           payment.status === "pending" &&
                           payment.dueDate && (
                             <div className="text-xs text-center text-yellow-600">
-                              Due:{" "}
+                              {t.due}:{" "}
                               {new Date(payment.dueDate).toLocaleDateString(
                                 "en-US",
                                 { month: "short", day: "numeric" }
@@ -543,7 +621,7 @@ export default function MemberDetailPage() {
                           payment.status === "overdue" &&
                           payment.dueDate && (
                             <div className="text-xs text-center text-red-600">
-                              Overdue:{" "}
+                              {t.overdue}:{" "}
                               {new Date(payment.dueDate).toLocaleDateString(
                                 "en-US",
                                 { month: "short", day: "numeric" }
@@ -574,19 +652,21 @@ export default function MemberDetailPage() {
               <div className="flex flex-wrap gap-4 pt-4 border-t">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  <span className="text-sm text-gray-600">Paid</span>
+                  <span className="text-sm text-gray-600">{t.paid}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Clock className="h-4 w-4 text-yellow-500" />
-                  <span className="text-sm text-gray-600">Pending</span>
+                  <span className="text-sm text-gray-600">{t.pending}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <XCircle className="h-4 w-4 text-red-500" />
-                  <span className="text-sm text-gray-600">Overdue</span>
+                  <span className="text-sm text-gray-600">{t.overdue}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-4 rounded-full border-2 border-gray-300" />
-                  <span className="text-sm text-gray-600">No Payment Due</span>
+                  <span className="text-sm text-gray-600">
+                    {t.noPaymentDue}
+                  </span>
                 </div>
               </div>
             </div>
@@ -597,15 +677,15 @@ export default function MemberDetailPage() {
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" className="gap-2">
             <CreditCard className="h-4 w-4" />
-            Record Payment
+            {t.recordPayment}
           </Button>
           <Button variant="outline" className="gap-2">
             <Mail className="h-4 w-4" />
-            Send Reminder
+            {t.sendReminder}
           </Button>
           <Button variant="outline" className="gap-2">
             <Calendar className="h-4 w-4" />
-            View Calendar
+            {t.viewCalendar}
           </Button>
         </div>
       </div>

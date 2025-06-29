@@ -49,9 +49,13 @@ interface Event {
 
 interface CalendarWidgetProps {
   events: Event[];
+  translations?: { [key: string]: string };
 }
 
-export function CalendarWidget({ events }: CalendarWidgetProps) {
+export function CalendarWidget({
+  events,
+  translations = {},
+}: CalendarWidgetProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
@@ -65,21 +69,29 @@ export function CalendarWidget({ events }: CalendarWidgetProps) {
   const daysInMonth = lastDayOfMonth.getDate();
 
   const monthNames = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
+    translations.january || "January",
+    translations.february || "February",
+    translations.march || "March",
+    translations.april || "April",
+    translations.may || "May",
+    translations.june || "June",
+    translations.july || "July",
+    translations.august || "August",
+    translations.september || "September",
+    translations.october || "October",
+    translations.november || "November",
+    translations.december || "December",
   ];
 
-  const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const weekDays = [
+    translations.sun || "Sun",
+    translations.mon || "Mon",
+    translations.tue || "Tue",
+    translations.wed || "Wed",
+    translations.thu || "Thu",
+    translations.fri || "Fri",
+    translations.sat || "Sat",
+  ];
 
   const navigateMonth = (direction: "prev" | "next") => {
     setCurrentDate(new Date(year, month + (direction === "next" ? 1 : -1), 1));
@@ -185,9 +197,10 @@ export function CalendarWidget({ events }: CalendarWidgetProps) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Calendar</CardTitle>
+              <CardTitle>{translations.calendarTitle || "Calendar"}</CardTitle>
               <CardDescription>
-                Track events and important dates
+                {translations.calendarDescription ||
+                  "Track events and important dates"}
               </CardDescription>
             </div>
             <div className="flex items-center space-x-2">
@@ -228,19 +241,19 @@ export function CalendarWidget({ events }: CalendarWidgetProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Events</CardTitle>
+          <CardTitle>{translations.eventsTitle || "Events"}</CardTitle>
           <CardDescription>
             {selectedDate
-              ? `Events for ${new Date(selectedDate).toLocaleDateString(
-                  "en-US",
-                  {
-                    weekday: "long",
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  }
-                )}`
-              : "Select a date to view events"}
+              ? `${translations.eventsFor || "Events for"} ${new Date(
+                  selectedDate
+                ).toLocaleDateString(translations.locale || "en-US", {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}`
+              : translations.selectDateToViewEvents ||
+                "Select a date to view events"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -270,7 +283,10 @@ export function CalendarWidget({ events }: CalendarWidgetProps) {
                     </div>
                     <div className="flex items-center gap-2">
                       <Users className="h-4 w-4" />
-                      <span>Created by: {event.members?.name}</span>
+                      <span>
+                        {translations.createdBy || "Created by"}:{" "}
+                        {event.members?.name}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -279,8 +295,9 @@ export function CalendarWidget({ events }: CalendarWidgetProps) {
           ) : (
             <div className="text-center text-muted-foreground py-4">
               {selectedDate
-                ? "No events scheduled"
-                : "Select a date to view events"}
+                ? translations.noEventsScheduled || "No events scheduled"
+                : translations.selectDateToViewEvents ||
+                  "Select a date to view events"}
             </div>
           )}
         </CardContent>
