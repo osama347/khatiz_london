@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/utils/supabase/server";
 
 const locales = ["en", "ps"];
 const defaultLocale = "en";
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Skip middleware for static files and API routes
@@ -22,6 +23,42 @@ export function middleware(request: NextRequest) {
   );
 
   if (pathnameHasLocale) {
+    // Define protected routes (routes that require authentication)
+    const isProtectedRoute =
+      pathname.includes("/members") ||
+      pathname.includes("/events") ||
+      pathname.includes("/payments") ||
+      pathname.includes("/reports") ||
+      pathname.includes("/test");
+
+    // Define auth routes (login, register, etc.)
+    const isAuthRoute =
+      pathname.includes("/login") ||
+      pathname.includes("/register") ||
+      pathname.includes("/auth");
+
+    // Only check auth for protected routes or auth routes
+    if (isProtectedRoute || isAuthRoute) {
+      const supabase = await createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      // If user is not authenticated and trying to access protected route
+      if (!user && isProtectedRoute) {
+        const locale = pathname.split("/")[1];
+        const loginUrl = new URL(`/${locale}/login`, request.url);
+        return NextResponse.redirect(loginUrl);
+      }
+
+      // If user is authenticated and trying to access auth routes
+      if (user && isAuthRoute) {
+        const locale = pathname.split("/")[1];
+        const homeUrl = new URL(`/${locale}`, request.url);
+        return NextResponse.redirect(homeUrl);
+      }
+    }
+
     // Add cache headers for better performance
     const response = NextResponse.next();
     response.headers.set(

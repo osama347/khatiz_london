@@ -6,6 +6,8 @@ import {
 } from "@/components/ui/sidebar";
 import { SidebarLeft } from "@/components/sidebar-left";
 import { Header } from "@/components/header";
+import { Suspense } from "react";
+import { AuthCheckWrapper } from "./auth-check-wrapper";
 
 // Optimize font loading
 const geistSans = Geist({
@@ -31,14 +33,18 @@ export default function AppLayout({
 }) {
   return (
     <div className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-      <SidebarProvider>
-        <SidebarLeft />
-        <SidebarInset>
-          <Header />
-          <main className="flex-1">{children}</main>
-          <SidebarRail />
-        </SidebarInset>
-      </SidebarProvider>
+      <AuthCheckWrapper>
+        <SidebarProvider>
+          <SidebarLeft />
+          <SidebarInset>
+            <Header />
+            <main className="flex-1">
+              <Suspense fallback={<div />}>{children}</Suspense>
+            </main>
+            <SidebarRail />
+          </SidebarInset>
+        </SidebarProvider>
+      </AuthCheckWrapper>
     </div>
   );
 }

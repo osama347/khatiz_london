@@ -1,28 +1,21 @@
-import { type EmailOtpType } from '@supabase/supabase-js'
-import { type NextRequest } from 'next/server'
-
-import { createClient } from '@/utils/supabase/server'
-import { redirect } from 'next/navigation'
+import { type NextRequest } from "next/server";
 
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const token_hash = searchParams.get('token_hash')
-  const type = searchParams.get('type') as EmailOtpType | null
-  const next = searchParams.get('next') ?? '/'
-
-  if (token_hash && type) {
-    const supabase = await createClient()
-
-    const { error } = await supabase.auth.verifyOtp({
-      type,
-      token_hash,
-    })
-    if (!error) {
-      // redirect user to specified redirect URL or root of app
-      redirect(next)
+  // Always show a message to check email for confirmation
+  return new Response(
+    `
+    <html>
+      <head><title>Check your email</title></head>
+      <body style="font-family: sans-serif; text-align: center; padding: 2rem;">
+        <h2>Check your email</h2>
+        <p>We've sent you a confirmation link. Please check your email to confirm your account.</p>
+        <p>If you received a code, you can enter it manually on the confirmation page.</p>
+      </body>
+    </html>
+  `,
+    {
+      headers: { "Content-Type": "text/html" },
+      status: 200,
     }
-  }
-
-  // redirect the user to an error page with some instructions
-  redirect('/error')
+  );
 }

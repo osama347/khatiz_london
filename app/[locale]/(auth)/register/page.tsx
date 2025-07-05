@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { use } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
+import { toCamelCase } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,18 +63,80 @@ export default function RegisterPage({
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const supabase = createClient();
 
-  // const handleSubmit = async (e: React.FormEvent) => {
-  //   e.preventDefault();
-  //   setIsLoading(true);
-  //   try {
-  //     await signUp(email, password, fullName);
-  //   } catch (error) {
-  //     console.error("Registration error:", error);
-  //   } finally {
-  //     setIsLoading(false);
-  //   }
-  // };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // First, check if email already exists in members table
+      const { data: existingMember, error: checkError } = await supabase
+        .from("members")
+        .select("id")
+        .eq("email", email)
+        .single();
+
+      if (existingMember) {
+        setError(
+          "A member with this email already exists. Please sign in or use a different email."
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      // If email doesn't exist, proceed with signup
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: toCamelCase(fullName),
+          },
+        },
+      });
+
+      console.log("SignUp Response:", { data, error });
+
+      if (error) {
+        console.log("Supabase Auth Error:", error);
+        console.log("Error message:", error.message);
+        console.log("Error code:", error.status);
+
+        const msg = error.message.toLowerCase();
+        if (
+          msg.includes("already registered") ||
+          msg.includes("already exists") ||
+          msg.includes("user with this email") ||
+          msg.includes("duplicate key value") ||
+          msg.includes("23505")
+        ) {
+          setError(
+            "A member with this email already exists. Please sign in or use a different email."
+          );
+        } else {
+          setError(error.message || "Registration failed");
+        }
+        return;
+      }
+
+      // Check if user was actually created
+      if (data?.user) {
+        console.log("User created successfully:", data.user);
+        router.push(`/confirm?email=${encodeURIComponent(email)}`);
+      } else {
+        setError("Registration failed - no user created");
+      }
+    } catch (error: any) {
+      console.log("Catch block error:", error);
+      setError(error?.message || "Registration failed");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -85,7 +150,7 @@ export default function RegisterPage({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="space-y-6">
+          <form className="space-y-6" onSubmit={handleSubmit}>
             <div className="space-y-2">
               <Label htmlFor="fullName">{t.fullName}</Label>
               <Input
@@ -93,7 +158,7 @@ export default function RegisterPage({
                 type="text"
                 placeholder={t.fullNamePlaceholder}
                 value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                onChange={(e) => setFullName(toCamelCase(e.target.value))}
                 required
               />
             </div>
@@ -119,6 +184,9 @@ export default function RegisterPage({
                 required
               />
             </div>
+            {error && (
+              <div className="text-red-500 text-sm text-center">{error}</div>
+            )}
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
                 <>

@@ -62,3 +62,11 @@ export function lazyLoad<T>(
     return promise;
   };
 }
+
+// Converts a string to camel case (capitalize first letter of each word, rest lowercase)
+export function toCamelCase(str: string): string {
+  return str
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
