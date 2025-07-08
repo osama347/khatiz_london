@@ -34,3 +34,13 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Performance: Bundle Size Analysis
+
+To check your production bundle size and ensure it stays below the 500KB gzipped target:
+
+```bash
+npm run analyze
+```
+
+This will generate a visual report of your bundle. Review it regularly, especially after adding new dependencies or large features.

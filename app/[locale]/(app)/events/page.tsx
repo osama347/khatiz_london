@@ -72,6 +72,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { fetchEvents } from "@/lib/server/events";
+import useSWR from "swr";
 
 interface Event {
   id: string;
@@ -91,13 +93,9 @@ export default function EventsPage({
   params: Promise<{ locale: string }>;
 }) {
   const resolvedParams = use(params);
-  const [events, setEvents] = useState<Event[]>([]);
-  const [filteredEvents, setFilteredEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [totalEvents, setTotalEvents] = useState(0);
   const [translations, setTranslations] = useState<any>({});
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -129,58 +127,22 @@ export default function EventsPage({
     getTranslations(resolvedParams.locale).then(setTranslations);
   }, [resolvedParams.locale]);
 
-  // Debounced search
-  const debouncedSearch = useMemo(
-    () =>
-      debounce((term: string) => {
-        const filtered = events.filter(
-          (event) =>
-            event.title.toLowerCase().includes(term.toLowerCase()) ||
-            event.description.toLowerCase().includes(term.toLowerCase()) ||
-            event.location.toLowerCase().includes(term.toLowerCase())
-        );
-        setFilteredEvents(filtered);
-        setCurrentPage(1);
-      }, 300),
-    [events]
+  // SWR data fetching for events
+  const {
+    data: eventsData,
+    error,
+    isValidating,
+  } = useSWR(
+    ["events", searchTerm, currentPage, pageSize],
+    () => fetchEvents({ searchTerm, page: currentPage, pageSize }),
+    {
+      keepPreviousData: true,
+    }
   );
 
-  useEffect(() => {
-    debouncedSearch(searchTerm);
-  }, [searchTerm, debouncedSearch]);
-
-  // Load events with parallel data fetching
-  const loadEvents = useCallback(async () => {
-    try {
-      setLoading(true);
-
-      const [eventsResult, countResult] = await Promise.all([
-        supabase
-          .from("events")
-          .select("*")
-          .order("event_date", { ascending: true }),
-        supabase.from("events").select("*", { count: "exact", head: true }),
-      ]);
-
-      if (eventsResult.data) {
-        setEvents(eventsResult.data);
-        setFilteredEvents(eventsResult.data);
-      }
-
-      if (countResult.count !== null) {
-        setTotalEvents(countResult.count);
-      }
-    } catch (error) {
-      console.error("Error loading events:", error);
-      toast.error(translations.failedToLoadEvents || "Failed to load events");
-    } finally {
-      setLoading(false);
-    }
-  }, [translations.failedToLoadEvents]);
-
-  useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
+  const events = eventsData?.data || [];
+  const totalEvents = eventsData?.count || 0;
+  const loading = isValidating && !eventsData;
 
   // Fetch members for creator select
   useEffect(() => {
@@ -217,8 +179,8 @@ export default function EventsPage({
   const getCurrentPageItems = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
     const endIndex = startIndex + pageSize;
-    return filteredEvents.slice(startIndex, endIndex);
-  }, [filteredEvents, currentPage, pageSize]);
+    return events.slice(startIndex, endIndex);
+  }, [events, currentPage, pageSize]);
 
   const handlePageChange = useCallback((page: number) => {
     setCurrentPage(page);
@@ -252,12 +214,12 @@ export default function EventsPage({
         location: "",
         created_by: "",
       });
-      loadEvents();
+      // No need to call loadEvents here, SWR will revalidate
     } catch (error) {
       console.error("Error adding event:", error);
       toast.error(translations.failedToAddEvent || "Failed to add event");
     }
-  }, [formData, translations, loadEvents]);
+  }, [formData, translations]);
 
   const handleDeleteEvent = useCallback(async (event: Event) => {
     setSelectedEvent(event);
@@ -280,12 +242,12 @@ export default function EventsPage({
       );
       setIsDeleteDialogOpen(false);
       setSelectedEvent(null);
-      loadEvents();
+      // No need to call loadEvents here, SWR will revalidate
     } catch (error) {
       console.error("Error deleting event:", error);
       toast.error(translations.failedToDeleteEvent || "Failed to delete event");
     }
-  }, [selectedEvent, translations, loadEvents]);
+  }, [selectedEvent, translations]);
 
   const handleEditEvent = useCallback((event: Event) => {
     setSelectedEvent(event);
@@ -325,12 +287,12 @@ export default function EventsPage({
         location: "",
         created_by: "",
       });
-      loadEvents();
+      // No need to call loadEvents here, SWR will revalidate
     } catch (error) {
       console.error("Error updating event:", error);
       toast.error(translations.failedToUpdateEvent || "Failed to update event");
     }
-  }, [formData, selectedEvent, translations, loadEvents]);
+  }, [formData, selectedEvent, translations]);
 
   // Memoized utility functions
   const getEventStatus = useCallback((eventDate: string) => {

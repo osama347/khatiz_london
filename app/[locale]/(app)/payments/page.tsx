@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { use } from "react";
 import debounce from "lodash.debounce";
+import useSWR, { mutate } from "swr";
 
 import {
   Card,
@@ -44,6 +45,7 @@ import { Plus, Search, Edit, Trash2, DollarSign, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/utils/supabase/client";
 import { getTranslations } from "@/lib/translations";
+import { fetchPayments, fetchMembersForPayments } from "@/lib/server/payments";
 
 interface Payment {
   id: string;
@@ -355,10 +357,9 @@ export default function PaymentsPage({
   const supabase = createClient();
 
   // Group state initializations
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -368,25 +369,42 @@ export default function PaymentsPage({
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showMemberList, setShowMemberList] = useState(false);
   const [newPayment, setNewPayment] = useState({
     userId: "",
     memberName: "",
     amount: "",
     paidOn: new Date().toISOString().split("T")[0],
   });
+  const [memberSearch, setMemberSearch] = useState("");
+  const [showMemberList, setShowMemberList] = useState(false);
+
+  // SWR data fetching for payments
+  const {
+    data: paymentsData,
+    error,
+    isValidating,
+  } = useSWR(
+    ["payments", searchTerm, currentPage, pageSize],
+    () => fetchPayments({ searchTerm, page: currentPage, pageSize }),
+    {
+      keepPreviousData: true,
+    }
+  );
+
+  // SWR data fetching for members (for autocomplete/search)
+  const { data: members = [] } = useSWR(
+    ["members-for-payments", memberSearch],
+    () => fetchMembersForPayments({ search: memberSearch, limit: 10 }),
+    {
+      keepPreviousData: true,
+    }
+  );
+
+  const payments = paymentsData?.data || [];
+  const totalPayments = paymentsData?.count || 0;
+  const loading = isValidating && !paymentsData;
 
   // Memoize filtered members and payments
-  const filteredMembers = useMemo(
-    () =>
-      members.filter((member) =>
-        member.name.toLowerCase().includes(searchQuery.toLowerCase())
-      ),
-    [members, searchQuery]
-  );
   const filteredPayments = useMemo(
     () =>
       payments.filter(
@@ -422,23 +440,16 @@ export default function PaymentsPage({
   );
 
   // Debounce search input for members
-  const debouncedSetSearchQuery = useMemo(
-    () => debounce(setSearchQuery, 300),
+  const debouncedSetMemberSearch = useMemo(
+    () => debounce(setMemberSearch, 300),
     []
   );
   const handleMemberSearchInput = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      debouncedSetSearchQuery(e.target.value);
+      debouncedSetMemberSearch(e.target.value);
       setShowMemberList(true);
-      if (!e.target.value) {
-        setNewPayment({
-          ...newPayment,
-          userId: "",
-          memberName: "",
-        });
-      }
     },
-    [debouncedSetSearchQuery, newPayment]
+    [debouncedSetMemberSearch]
   );
 
   // Memoize getPageNumbers
@@ -484,7 +495,7 @@ export default function PaymentsPage({
   useEffect(() => {
     async function loadData() {
       try {
-        setLoading(true);
+        // setLoading(true); // This line is removed as loading is now managed by SWR
 
         // Fetch payments with member information
         const { data: paymentsData, error: paymentsError } = await supabase
@@ -520,15 +531,15 @@ export default function PaymentsPage({
           return;
         }
 
-        setPayments(paymentsData);
-        setMembers(membersData);
+        // setPayments(paymentsData); // This line is removed as payments is now managed by SWR
+        // setMembers(membersData); // This line is removed as members is now managed by SWR
       } catch (error) {
         console.error("Error loading data:", error);
         toast.error(
           error instanceof Error ? error.message : "Failed to load data"
         );
       } finally {
-        setLoading(false);
+        // setLoading(false); // This line is removed as loading is now managed by SWR
       }
     }
 
@@ -588,7 +599,7 @@ export default function PaymentsPage({
       }
 
       // Add the new payment to the beginning of the list
-      setPayments([data[0], ...payments]);
+      // setPayments([data[0], ...payments]); // This line is removed as payments is now managed by SWR
 
       // Reset form
       setNewPayment({
@@ -600,6 +611,7 @@ export default function PaymentsPage({
 
       setIsAddDialogOpen(false);
       toast.success("Payment recorded successfully");
+      mutate(["payments", searchTerm, currentPage, pageSize]);
     } catch (error) {
       console.error("Error adding payment:", error);
       toast.error(
@@ -670,7 +682,7 @@ export default function PaymentsPage({
       userId: member.id,
       memberName: member.name,
     });
-    setSearchQuery(member.name);
+    setMemberSearch(member.name);
     setShowMemberList(false);
   };
 
@@ -697,10 +709,11 @@ export default function PaymentsPage({
       }
 
       // Remove the payment from the list
-      setPayments(payments.filter((p) => p.id !== paymentToDelete.id));
+      // setPayments(payments.filter((p) => p.id !== paymentToDelete.id)); // This line is removed as payments is now managed by SWR
       setShowDeleteDialog(false);
       setPaymentToDelete(null);
       toast.success("Payment deleted successfully");
+      mutate(["payments", searchTerm, currentPage, pageSize]);
     } catch (error) {
       console.error("Error deleting payment:", error);
       toast.error(
@@ -719,8 +732,8 @@ export default function PaymentsPage({
       amount: payment.amount.toString(),
       paidOn: new Date(payment.paid_on).toISOString().split("T")[0],
     });
-    setSearchQuery(payment.member?.name || "");
-    setShowEditDialog(true);
+    setMemberSearch(payment.member?.name || "");
+    // setShowEditDialog(true); // This line is removed as showEditDialog is no longer used
   };
 
   const handleUpdatePayment = async () => {
@@ -774,9 +787,9 @@ export default function PaymentsPage({
       }
 
       // Update the payment in the list
-      setPayments(
-        payments.map((p) => (p.id === editingPayment.id ? data[0] : p))
-      );
+      // setPayments(
+      //   payments.map((p) => (p.id === editingPayment.id ? data[0] : p))
+      // ); // This line is removed as payments is now managed by SWR
 
       // Reset form and state
       setNewPayment({
@@ -785,10 +798,11 @@ export default function PaymentsPage({
         amount: "",
         paidOn: new Date().toISOString().split("T")[0],
       });
-      setSearchQuery("");
+      setMemberSearch("");
       setEditingPayment(null);
-      setShowEditDialog(false);
+      // setShowEditDialog(false); // This line is removed as showEditDialog is no longer used
       toast.success("Payment updated successfully");
+      mutate(["payments", searchTerm, currentPage, pageSize]);
     } catch (error) {
       console.error("Error updating payment:", error);
       toast.error(
@@ -868,11 +882,9 @@ export default function PaymentsPage({
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {formatCurrency(
-                  payments
-                    .filter((p) => getPaymentStatus(p) === "Paid")
-                    .reduce((sum, p) => sum + p.amount, 0)
-                )}
+                {payments
+                  .filter((p) => getPaymentStatus(p) === "Paid")
+                  .reduce((sum, p) => sum + p.amount, 0)}
               </div>
               <p className="text-xs text-muted-foreground">
                 {translations.thisMonth}
@@ -929,12 +941,10 @@ export default function PaymentsPage({
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {formatCurrency(
-                  payments.length > 0
-                    ? payments.reduce((sum, p) => sum + p.amount, 0) /
-                        payments.length
-                    : 0
-                )}
+                {payments.length > 0
+                  ? payments.reduce((sum, p) => sum + p.amount, 0) /
+                    payments.length
+                  : 0}
               </div>
               <p className="text-xs text-muted-foreground">
                 {translations.perMember}
@@ -978,38 +988,37 @@ export default function PaymentsPage({
                   <div className="col-span-3 relative member-search-container">
                     <Input
                       id="member"
-                      value={searchQuery}
+                      value={memberSearch}
                       onChange={handleMemberSearchInput}
                       placeholder={translations.searchMember}
                       className="w-full"
                     />
-                    {showMemberList && searchQuery && (
+                    {showMemberList && memberSearch && (
                       <div className="absolute z-10 w-full mt-1 bg-white rounded-md shadow-lg border">
                         <div className="max-h-60 overflow-auto">
-                          {filteredMembers.length > 0 ? (
-                            filteredMembers.map((member) => (
-                              <div
-                                key={member.id}
-                                className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-3"
-                                onClick={() => handleMemberSelect(member)}
-                              >
-                                <div className="h-8 w-8 rounded-full overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
-                                  {member.avatar ? (
-                                    <img
-                                      src={member.avatar}
-                                      alt={member.name}
-                                      className="h-full w-full object-cover"
-                                    />
-                                  ) : (
-                                    <span className="text-xs font-medium">
-                                      {member.name.charAt(0).toUpperCase()}
-                                    </span>
-                                  )}
-                                </div>
-                                <span className="truncate">{member.name}</span>
+                          {members.map((member) => (
+                            <div
+                              key={member.id}
+                              className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-3"
+                              onClick={() => handleMemberSelect(member)}
+                            >
+                              <div className="h-8 w-8 rounded-full overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
+                                {member.avatar ? (
+                                  <img
+                                    src={member.avatar}
+                                    alt={member.name}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <span className="text-xs font-medium">
+                                    {member.name.charAt(0).toUpperCase()}
+                                  </span>
+                                )}
                               </div>
-                            ))
-                          ) : (
+                              <span className="truncate">{member.name}</span>
+                            </div>
+                          ))}
+                          {members.length === 0 && (
                             <div className="px-4 py-2 text-gray-500">
                               {translations.noMembersFound}
                             </div>
@@ -1318,38 +1327,37 @@ export default function PaymentsPage({
               <div className="col-span-3 relative member-search-container">
                 <Input
                   id="member"
-                  value={searchQuery}
+                  value={memberSearch}
                   onChange={handleMemberSearchInput}
                   placeholder={translations.searchMember}
                   className="w-full"
                 />
-                {showMemberList && searchQuery && (
+                {showMemberList && memberSearch && (
                   <div className="absolute z-10 w-full mt-1 bg-white rounded-md shadow-lg border">
                     <div className="max-h-60 overflow-auto">
-                      {filteredMembers.length > 0 ? (
-                        filteredMembers.map((member) => (
-                          <div
-                            key={member.id}
-                            className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-3"
-                            onClick={() => handleMemberSelect(member)}
-                          >
-                            <div className="h-8 w-8 rounded-full overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
-                              {member.avatar ? (
-                                <img
-                                  src={member.avatar}
-                                  alt={member.name}
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : (
-                                <span className="text-xs font-medium">
-                                  {member.name.charAt(0).toUpperCase()}
-                                </span>
-                              )}
-                            </div>
-                            <span className="truncate">{member.name}</span>
+                      {members.map((member) => (
+                        <div
+                          key={member.id}
+                          className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-3"
+                          onClick={() => handleMemberSelect(member)}
+                        >
+                          <div className="h-8 w-8 rounded-full overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
+                            {member.avatar ? (
+                              <img
+                                src={member.avatar}
+                                alt={member.name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <span className="text-xs font-medium">
+                                {member.name.charAt(0).toUpperCase()}
+                              </span>
+                            )}
                           </div>
-                        ))
-                      ) : (
+                          <span className="truncate">{member.name}</span>
+                        </div>
+                      ))}
+                      {members.length === 0 && (
                         <div className="px-4 py-2 text-gray-500">
                           {translations.noMembersFound}
                         </div>
@@ -1403,7 +1411,7 @@ export default function PaymentsPage({
                   amount: "",
                   paidOn: new Date().toISOString().split("T")[0],
                 });
-                setSearchQuery("");
+                setMemberSearch("");
               }}
               disabled={isSubmitting}
             >

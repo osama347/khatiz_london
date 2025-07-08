@@ -53,6 +53,8 @@ import {
 } from "@/components/ui/table";
 import { getTranslations, Locale as SupportedLocale } from "@/lib/translations";
 import { useMemo, useCallback } from "react";
+import useSWR from "swr";
+import { fetchPaymentTrends } from "@/lib/server/reports";
 
 interface Payment {
   id: string;
@@ -101,16 +103,29 @@ export default function ReportsPage({
   const [loading, setLoading] = useState(true);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [timeRange, setTimeRange] = useState("month");
   const [monthlyPayments, setMonthlyPayments] = useState<MonthlyPayment[]>([]);
   const [selectedReport, setSelectedReport] = useState<ReportType>("overview");
   const supabase = createClient();
   const reportRef = useRef<HTMLDivElement>(null);
+  const [timeRange, setTimeRange] = useState<"week" | "month" | "year">("week");
 
   // Load translations on mount or locale change
   useEffect(() => {
     getTranslations(locale).then(setT);
   }, [locale]);
+
+  // SWR data fetching for payment trends
+  const {
+    data: paymentTrends,
+    error: paymentTrendsError,
+    isValidating: paymentTrendsLoading,
+  } = useSWR(
+    ["paymentTrends", timeRange],
+    () => fetchPaymentTrends({ timeRange }),
+    {
+      keepPreviousData: true,
+    }
+  );
 
   useEffect(() => {
     async function loadData() {
@@ -191,64 +206,6 @@ export default function ReportsPage({
     () => members.filter((m) => m.status === "Suspended").length,
     [members]
   );
-
-  const getPaymentTrendsData = useCallback(() => {
-    const now = new Date();
-    const data = [];
-    let startDate: Date;
-
-    switch (timeRange) {
-      case "week":
-        startDate = new Date(now.setDate(now.getDate() - 7));
-        for (let i = 0; i < 7; i++) {
-          const date = new Date(startDate);
-          date.setDate(date.getDate() + i);
-          const dayPayments = payments.filter(
-            (p) =>
-              format(new Date(p.paid_on), "yyyy-MM-dd") ===
-              format(date, "yyyy-MM-dd")
-          );
-          data.push({
-            date: format(date, "EEE"),
-            amount: dayPayments.reduce((sum, p) => sum + p.amount, 0),
-          });
-        }
-        break;
-      case "month":
-        startDate = new Date(now.setDate(now.getDate() - 30));
-        for (let i = 0; i < 30; i++) {
-          const date = new Date(startDate);
-          date.setDate(date.getDate() + i);
-          const dayPayments = payments.filter(
-            (p) =>
-              format(new Date(p.paid_on), "yyyy-MM-dd") ===
-              format(date, "yyyy-MM-dd")
-          );
-          data.push({
-            date: format(date, "MMM dd"),
-            amount: dayPayments.reduce((sum, p) => sum + p.amount, 0),
-          });
-        }
-        break;
-      case "year":
-        startDate = new Date(now.setMonth(now.getMonth() - 12));
-        for (let i = 0; i < 12; i++) {
-          const date = new Date(startDate);
-          date.setMonth(date.getMonth() + i);
-          const monthPayments = payments.filter(
-            (p) =>
-              format(new Date(p.paid_on), "yyyy-MM") === format(date, "yyyy-MM")
-          );
-          data.push({
-            date: format(date, "MMM yyyy"),
-            amount: monthPayments.reduce((sum, p) => sum + p.amount, 0),
-          });
-        }
-        break;
-    }
-
-    return data;
-  }, [payments, timeRange]);
 
   const memberStatusData = useMemo(
     () => [
@@ -462,7 +419,7 @@ export default function ReportsPage({
                 <CardContent>
                   <div className="h-[300px]">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={getPaymentTrendsData()}>
+                      <LineChart data={paymentTrends}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="date" />
                         <YAxis />
@@ -855,10 +812,7 @@ export default function ReportsPage({
     members,
     monthlyPayments,
     memberStatusData,
-    getPaymentTrendsData,
-    handlePrint,
-    handleDownloadPDF,
-    handleDownloadCSV,
+    paymentTrends,
   ]);
 
   if (!t) {

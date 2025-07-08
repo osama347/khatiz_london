@@ -7,8 +7,7 @@ export const metadata: Metadata = {
   title: "East London",
   description: "East London Database Management System",
   // Performance optimizations
-  viewport: "width=device-width, initial-scale=1",
-  themeColor: "#000000",
+  // viewport and themeColor moved to viewport.ts
 };
 
 export default function RootLayout({

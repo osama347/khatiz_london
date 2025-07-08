@@ -71,6 +71,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { fetchMembers } from "@/lib/server/members";
+import useSWR from "swr";
 
 interface Member {
   id: string;
@@ -115,13 +117,9 @@ export default function MembersPage({
   params: Promise<{ locale: string }>;
 }) {
   const resolvedParams = use(params);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [filteredMembers, setFilteredMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [totalMembers, setTotalMembers] = useState(0);
   const [translations, setTranslations] = useState<any>({});
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -165,67 +163,29 @@ export default function MembersPage({
     getTranslations(resolvedParams.locale).then(setTranslations);
   }, [resolvedParams.locale]);
 
-  // Debounced search
-  const debouncedSearch = useMemo(
-    () =>
-      debounce((term: string) => {
-        const filtered = members.filter(
-          (member) =>
-            member.name.toLowerCase().includes(term.toLowerCase()) ||
-            member.email.toLowerCase().includes(term.toLowerCase()) ||
-            member.phone.includes(term)
-        );
-        setFilteredMembers(filtered);
-        setCurrentPage(1);
-      }, 300),
-    [members]
+  // SWR data fetching for members
+  const {
+    data: membersData,
+    error,
+    isValidating,
+  } = useSWR(
+    ["members", searchTerm, currentPage, pageSize],
+    () => fetchMembers({ searchTerm, page: currentPage, pageSize }),
+    {
+      keepPreviousData: true,
+    }
   );
 
-  useEffect(() => {
-    debouncedSearch(searchTerm);
-  }, [searchTerm, debouncedSearch]);
-
-  // Load members with parallel data fetching
-  const loadMembers = useCallback(async () => {
-    try {
-      setLoading(true);
-
-      const [membersResult, countResult] = await Promise.all([
-        supabase
-          .from("members")
-          .select("*")
-          .order("created_at", { ascending: false }),
-        supabase.from("members").select("*", { count: "exact", head: true }),
-      ]);
-
-      console.log("Fetched members:", membersResult.data);
-
-      if (membersResult.data) {
-        setMembers(membersResult.data);
-        setFilteredMembers(membersResult.data);
-      }
-
-      if (countResult.count !== null) {
-        setTotalMembers(countResult.count);
-      }
-    } catch (error) {
-      console.error("Error loading members:", error);
-      toast.error(translations.failedToLoadMembers || "Failed to load members");
-    } finally {
-      setLoading(false);
-    }
-  }, [translations.failedToLoadMembers]);
-
-  useEffect(() => {
-    loadMembers();
-  }, [loadMembers]);
+  const members = membersData?.data || [];
+  const totalMembers = membersData?.count || 0;
+  const loading = isValidating && !membersData;
 
   // Memoized pagination
   const getCurrentPageItems = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
     const endIndex = startIndex + pageSize;
-    return filteredMembers.slice(startIndex, endIndex);
-  }, [filteredMembers, currentPage, pageSize]);
+    return members.slice(startIndex, endIndex);
+  }, [members, currentPage, pageSize]);
 
   const handlePageChange = useCallback((page: number) => {
     setCurrentPage(page);
@@ -237,7 +197,7 @@ export default function MembersPage({
   }, []);
 
   const getPageNumbers = useMemo(() => {
-    const totalPages = Math.ceil(filteredMembers.length / pageSize);
+    const totalPages = Math.ceil(members.length / pageSize);
     const pages = [];
     const maxVisiblePages = 5;
 
@@ -270,7 +230,7 @@ export default function MembersPage({
     }
 
     return pages;
-  }, [filteredMembers.length, pageSize, currentPage]);
+  }, [members.length, pageSize, currentPage]);
 
   const handleDeleteMember = useCallback(async (member: Member) => {
     setSelectedMember(member);
@@ -293,14 +253,14 @@ export default function MembersPage({
       );
       setIsDeleteDialogOpen(false);
       setSelectedMember(null);
-      loadMembers();
+      // No need to call loadMembers here, SWR will re-fetch
     } catch (error) {
       console.error("Error deleting member:", error);
       toast.error(
         translations.failedToDeleteMember || "Failed to delete member"
       );
     }
-  }, [selectedMember, translations, loadMembers]);
+  }, [selectedMember, translations]);
 
   const handleEditMember = useCallback((member: Member) => {
     console.log("Editing member:", member);
@@ -418,7 +378,7 @@ export default function MembersPage({
         emergency_contact_number: "",
         role: "",
       });
-      loadMembers();
+      // No need to call loadMembers here, SWR will re-fetch
     } catch (error) {
       console.error("Error updating member:", error);
       toast.error(
@@ -427,7 +387,7 @@ export default function MembersPage({
     } finally {
       setIsUpdating(false);
     }
-  }, [formData, selectedMember, translations, loadMembers]);
+  }, [formData, selectedMember, translations]);
 
   // Memoized utility components
   const getStatusBadge = useCallback(
@@ -572,7 +532,7 @@ export default function MembersPage({
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {filteredMembers.length === 0 ? (
+            {members.length === 0 ? (
               <div className="text-center py-8">
                 <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                 <h3 className="text-lg font-semibold mb-2">
@@ -763,13 +723,10 @@ export default function MembersPage({
                 <div className="flex items-center justify-between space-x-2 py-4">
                   <div className="text-sm text-muted-foreground">
                     {translations.showing || "Showing"}{" "}
-                    {Math.min(
-                      (currentPage - 1) * pageSize + 1,
-                      filteredMembers.length
-                    )}{" "}
+                    {Math.min((currentPage - 1) * pageSize + 1, members.length)}{" "}
                     {translations.to || "to"}{" "}
-                    {Math.min(currentPage * pageSize, filteredMembers.length)}{" "}
-                    {translations.of || "of"} {filteredMembers.length}{" "}
+                    {Math.min(currentPage * pageSize, members.length)}{" "}
+                    {translations.of || "of"} {members.length}{" "}
                     {translations.entries || "entries"}
                   </div>
                   <div className="flex items-center space-x-2">
@@ -807,8 +764,7 @@ export default function MembersPage({
                       size="sm"
                       onClick={() => handlePageChange(currentPage + 1)}
                       disabled={
-                        currentPage ===
-                        Math.ceil(filteredMembers.length / pageSize)
+                        currentPage === Math.ceil(members.length / pageSize)
                       }
                     >
                       {translations.next || "Next"}
@@ -817,13 +773,10 @@ export default function MembersPage({
                       variant="outline"
                       size="sm"
                       onClick={() =>
-                        handlePageChange(
-                          Math.ceil(filteredMembers.length / pageSize)
-                        )
+                        handlePageChange(Math.ceil(members.length / pageSize))
                       }
                       disabled={
-                        currentPage ===
-                        Math.ceil(filteredMembers.length / pageSize)
+                        currentPage === Math.ceil(members.length / pageSize)
                       }
                     >
                       {translations.last || "Last"}

@@ -2,6 +2,11 @@
 
 import Link from "next/link";
 import { type LucideIcon } from "lucide-react";
+import useSWR, { mutate } from "swr";
+import { fetchMembers } from "@/lib/server/members";
+import { fetchEvents } from "@/lib/server/events";
+import { fetchPaymentTrends } from "@/lib/server/reports";
+import { fetchPayments } from "@/lib/server/payments";
 
 import {
   SidebarMenu,
@@ -19,12 +24,36 @@ export function NavMain({
     isActive?: boolean;
   }[];
 }) {
+  // Prefetch logic
+  const handlePrefetch = (url: string) => {
+    if (url.includes("/members")) {
+      mutate(
+        ["members", "", 1, 10],
+        fetchMembers({ searchTerm: "", page: 1, pageSize: 10 })
+      );
+    } else if (url.includes("/events")) {
+      mutate(
+        ["events", "", 1, 10],
+        fetchEvents({ searchTerm: "", page: 1, pageSize: 10 })
+      );
+    } else if (url.includes("/reports")) {
+      mutate(
+        ["paymentTrends", "week"],
+        fetchPaymentTrends({ timeRange: "week" })
+      );
+    } else if (url.includes("/payments")) {
+      mutate(
+        ["payments", "", 1, 10],
+        fetchPayments({ searchTerm: "", page: 1, pageSize: 10 })
+      );
+    }
+  };
   return (
     <SidebarMenu>
       {items.map((item) => (
         <SidebarMenuItem key={item.title}>
           <SidebarMenuButton asChild isActive={item.isActive}>
-            <Link href={item.url}>
+            <Link href={item.url} onMouseEnter={() => handlePrefetch(item.url)}>
               <item.icon />
               <span>{item.title}</span>
             </Link>
