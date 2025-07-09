@@ -7,6 +7,9 @@ import { fetchMembers } from "@/lib/server/members";
 import { fetchEvents } from "@/lib/server/events";
 import { fetchPaymentTrends } from "@/lib/server/reports";
 import { fetchPayments } from "@/lib/server/payments";
+import { fetchMemberByEmail } from "@/lib/server/members";
+import { createClient } from "@/utils/supabase/client";
+import { useEffect, useState } from "react";
 
 import {
   SidebarMenu,

@@ -46,6 +46,8 @@ import { toast } from "sonner";
 import { createClient } from "@/utils/supabase/client";
 import { getTranslations } from "@/lib/translations";
 import { fetchPayments, fetchMembersForPayments } from "@/lib/server/payments";
+import { fetchMemberByEmail } from "@/lib/server/members";
+import { useRouter } from "next/navigation";
 
 interface Payment {
   id: string;
@@ -352,11 +354,7 @@ export default function PaymentsPage({
 }) {
   const resolvedParams = use(params);
   const [translations, setTranslations] = useState<any>({});
-
-  // Initialize Supabase client once
   const supabase = createClient();
-
-  // Group state initializations
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -377,8 +375,28 @@ export default function PaymentsPage({
   });
   const [memberSearch, setMemberSearch] = useState("");
   const [showMemberList, setShowMemberList] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const router = useRouter();
 
-  // SWR data fetching for payments
+  useEffect(() => {
+    async function getUserId() {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user?.id) setUserId(data.user.id);
+    }
+    getUserId();
+  }, []);
+  useEffect(() => {
+    async function getUserEmail() {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user?.email) setUserEmail(data.user.email);
+    }
+    getUserEmail();
+  }, []);
+  const { data: member, isLoading } = useSWR(
+    userEmail ? ["member", userEmail] : null,
+    () => fetchMemberByEmail(userEmail!)
+  );
   const {
     data: paymentsData,
     error,
@@ -390,8 +408,6 @@ export default function PaymentsPage({
       keepPreviousData: true,
     }
   );
-
-  // SWR data fetching for members (for autocomplete/search)
   const { data: members = [] } = useSWR(
     ["members-for-payments", memberSearch],
     () => fetchMembersForPayments({ search: memberSearch, limit: 10 }),
@@ -399,16 +415,18 @@ export default function PaymentsPage({
       keepPreviousData: true,
     }
   );
-
+  useEffect(() => {
+    if (!isLoading && member && member.role !== "admin") {
+      router.replace("/profile");
+    }
+  }, [isLoading, member, router]);
   const payments = paymentsData?.data || [];
   const totalPayments = paymentsData?.count || 0;
   const loading = isValidating && !paymentsData;
-
-  // Memoize filtered members and payments
   const filteredPayments = useMemo(
     () =>
       payments.filter(
-        (payment) =>
+        (payment: Payment) =>
           (payment.member?.name
             ?.toLowerCase()
             .includes(searchTerm.toLowerCase()) ||
@@ -426,8 +444,6 @@ export default function PaymentsPage({
     const endIndex = startIndex + pageSize;
     return filteredPayments.slice(startIndex, endIndex);
   }, [filteredPayments, currentPage, pageSize]);
-
-  // Debounce search input for payments
   const debouncedSetSearchTerm = useMemo(
     () => debounce(setSearchTerm, 300),
     []
@@ -438,8 +454,6 @@ export default function PaymentsPage({
     },
     [debouncedSetSearchTerm]
   );
-
-  // Debounce search input for members
   const debouncedSetMemberSearch = useMemo(
     () => debounce(setMemberSearch, 300),
     []
@@ -451,10 +465,8 @@ export default function PaymentsPage({
     },
     [debouncedSetMemberSearch]
   );
-
-  // Memoize getPageNumbers
   const getPageNumbers = useCallback(() => {
-    const pages = [];
+    const pages: number[] = [];
     const maxVisiblePages = 5;
     if (totalPages <= maxVisiblePages) {
       for (let i = 1; i <= totalPages; i++) {
@@ -483,7 +495,6 @@ export default function PaymentsPage({
     }
     return pages;
   }, [totalPages, currentPage]);
-
   const handlePageChange = useCallback((page: number) => {
     setCurrentPage(page);
   }, []);
@@ -491,61 +502,6 @@ export default function PaymentsPage({
     setPageSize(size);
     setCurrentPage(1);
   }, []);
-
-  useEffect(() => {
-    async function loadData() {
-      try {
-        // setLoading(true); // This line is removed as loading is now managed by SWR
-
-        // Fetch payments with member information
-        const { data: paymentsData, error: paymentsError } = await supabase
-          .from("payments")
-          .select(
-            `
-            *,
-            member:members(name, avatar, email)
-          `
-          )
-          .order("paid_on", { ascending: false });
-
-        if (paymentsError) {
-          console.error("Payments error:", paymentsError);
-          toast.error(`Failed to load payments: ${paymentsError.message}`);
-          return;
-        }
-
-        // Fetch members for the dropdown
-        const { data: membersData, error: membersError } = await supabase
-          .from("members")
-          .select("id, name, avatar")
-          .order("name");
-
-        if (membersError) {
-          console.error("Members error:", membersError);
-          toast.error(`Failed to load members: ${membersError.message}`);
-          return;
-        }
-
-        if (!paymentsData || !membersData) {
-          toast.error("No data received from the server");
-          return;
-        }
-
-        // setPayments(paymentsData); // This line is removed as payments is now managed by SWR
-        // setMembers(membersData); // This line is removed as members is now managed by SWR
-      } catch (error) {
-        console.error("Error loading data:", error);
-        toast.error(
-          error instanceof Error ? error.message : "Failed to load data"
-        );
-      } finally {
-        // setLoading(false); // This line is removed as loading is now managed by SWR
-      }
-    }
-
-    loadData();
-  }, [supabase]);
-
   useEffect(() => {
     getTranslations(resolvedParams.locale).then(setTranslations);
   }, [resolvedParams.locale]);
@@ -819,635 +775,588 @@ export default function PaymentsPage({
     setShowSlipDialog(true);
   };
 
-  if (loading) {
-    return (
+  return (
+    isLoading || !userEmail || (member && member.role !== "admin") ? null : (
       <div className="flex flex-col">
-        {/* <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" />
-          <div className="flex flex-1 items-center gap-2">
-            <Skeleton className="h-6 w-48" />
-          </div>
-        </header> */}
-
         <div className="flex-1 space-y-4 p-4 md:p-8">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {[1, 2, 3, 4].map((i) => (
-              <Card key={i}>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <Skeleton className="h-4 w-24" />
-                  <Skeleton className="h-4 w-4" />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-8 w-24" />
-                  <Skeleton className="h-4 w-32 mt-2" />
-                </CardContent>
-              </Card>
-            ))}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {translations.totalCollected}
+                </CardTitle>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {payments
+                    .filter((p: Payment) => getPaymentStatus(p) === "Paid")
+                    .reduce((sum: number, p: Payment) => sum + p.amount, 0)}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {translations.thisMonth}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {translations.pendingPayments}
+                </CardTitle>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {
+                    payments.filter((p: Payment) => getPaymentStatus(p) === "Pending")
+                      .length
+                  }
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {translations.awaitingPayment}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {translations.overdue}
+                </CardTitle>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {
+                    payments.filter((p: Payment) => getPaymentStatus(p) === "Overdue")
+                      .length
+                  }
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {translations.requireAttention}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {translations.averagePayment}
+                </CardTitle>
+                <DollarSign className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {payments.length > 0
+                    ? payments.reduce((sum: number, p: Payment) => sum + p.amount, 0) /
+                      payments.length
+                    : 0}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {translations.perMember}
+                </p>
+              </CardContent>
+            </Card>
           </div>
 
           <div className="flex items-center justify-between">
-            <Skeleton className="h-10 w-[300px]" />
-            <Skeleton className="h-10 w-32" />
-          </div>
-
-          <Card>
-            <CardHeader>
-              <Skeleton className="h-6 w-48" />
-              <Skeleton className="h-4 w-72" />
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <Skeleton className="h-10 w-full" />
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col">
-      <div className="flex-1 space-y-4 p-4 md:p-8">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                {translations.totalCollected}
-              </CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {payments
-                  .filter((p) => getPaymentStatus(p) === "Paid")
-                  .reduce((sum, p) => sum + p.amount, 0)}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {translations.thisMonth}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                {translations.pendingPayments}
-              </CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {
-                  payments.filter((p) => getPaymentStatus(p) === "Pending")
-                    .length
-                }
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {translations.awaitingPayment}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                {translations.overdue}
-              </CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {
-                  payments.filter((p) => getPaymentStatus(p) === "Overdue")
-                    .length
-                }
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {translations.requireAttention}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                {translations.averagePayment}
-              </CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {payments.length > 0
-                  ? payments.reduce((sum, p) => sum + p.amount, 0) /
-                    payments.length
-                  : 0}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {translations.perMember}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="relative">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={translations.searchPayments}
-                value={searchTerm}
-                onChange={handleSearchInput}
-                className="pl-8 w-[300px]"
-              />
-            </div>
-          </div>
-
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                {translations.recordPayment}
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>{translations.recordNewPayment}</DialogTitle>
-                <DialogDescription>
-                  {translations.enterPaymentDetails}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="member" className="text-right">
-                    {translations.memberRequired}
-                  </Label>
-                  <div className="col-span-3 relative member-search-container">
-                    <Input
-                      id="member"
-                      value={memberSearch}
-                      onChange={handleMemberSearchInput}
-                      placeholder={translations.searchMember}
-                      className="w-full"
-                    />
-                    {showMemberList && memberSearch && (
-                      <div className="absolute z-10 w-full mt-1 bg-white rounded-md shadow-lg border">
-                        <div className="max-h-60 overflow-auto">
-                          {members.map((member) => (
-                            <div
-                              key={member.id}
-                              className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-3"
-                              onClick={() => handleMemberSelect(member)}
-                            >
-                              <div className="h-8 w-8 rounded-full overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
-                                {member.avatar ? (
-                                  <img
-                                    src={member.avatar}
-                                    alt={member.name}
-                                    className="h-full w-full object-cover"
-                                  />
-                                ) : (
-                                  <span className="text-xs font-medium">
-                                    {member.name.charAt(0).toUpperCase()}
-                                  </span>
-                                )}
-                              </div>
-                              <span className="truncate">{member.name}</span>
-                            </div>
-                          ))}
-                          {members.length === 0 && (
-                            <div className="px-4 py-2 text-gray-500">
-                              {translations.noMembersFound}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="amount" className="text-right">
-                    {translations.amountRequired}
-                  </Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={newPayment.amount}
-                    onChange={(e) =>
-                      setNewPayment({ ...newPayment, amount: e.target.value })
-                    }
-                    className="col-span-3"
-                    placeholder={translations.enterAmount}
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="paidOn" className="text-right">
-                    {translations.paidOnRequired}
-                  </Label>
-                  <Input
-                    id="paidOn"
-                    type="date"
-                    value={newPayment.paidOn}
-                    onChange={(e) =>
-                      setNewPayment({ ...newPayment, paidOn: e.target.value })
-                    }
-                    className="col-span-3"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="submit"
-                  onClick={handleAddPayment}
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                      {translations.recordingPayment}
-                    </>
-                  ) : (
-                    translations.recordPayment
-                  )}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{translations.paymentRecords}</CardTitle>
-            <CardDescription>{translations.trackPayments}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{translations.member}</TableHead>
-                  <TableHead>{translations.amount}</TableHead>
-                  <TableHead>{translations.paidOn}</TableHead>
-                  <TableHead>Active Until</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {getCurrentPageItems().length > 0 ? (
-                  getCurrentPageItems().map((payment) => (
-                    <TableRow key={payment.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="h-8 w-8 rounded-full overflow-hidden">
-                            {payment.member?.avatar ? (
-                              <img
-                                src={payment.member.avatar}
-                                alt={payment.member.name}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <div className="h-full w-full bg-muted flex items-center justify-center">
-                                <span className="text-xs font-medium">
-                                  {payment.member?.name
-                                    ?.charAt(0)
-                                    .toUpperCase()}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                          <span>{payment.member?.name}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>${formatCurrency(payment.amount)}</TableCell>
-                      <TableCell>
-                        {payment.paid_on ? formatDate(payment.paid_on) : "-"}
-                      </TableCell>
-                      <TableCell>{formatDate(payment.active_until)}</TableCell>
-                      <TableCell>
-                        {getStatusBadge(getPaymentStatus(payment))}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center space-x-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handlePrintSlip(payment)}
-                          >
-                            <Printer className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEditPayment(payment)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeletePayment(payment)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
-                      <div className="flex flex-col items-center justify-center space-y-2">
-                        <DollarSign className="h-8 w-8 text-muted-foreground" />
-                        <p className="text-sm font-medium">
-                          {translations.noPaymentsFound}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {translations.getStartedByRecording}
-                        </p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setIsAddDialogOpen(true)}
-                          className="mt-2"
-                        >
-                          <Plus className="mr-2 h-4 w-4" />
-                          {translations.recordPayment}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-
-            {/* Pagination */}
-            <div className="flex items-center justify-between mt-4">
-              <div className="flex items-center space-x-2">
-                <p className="text-sm text-muted-foreground">
-                  {translations.showing}{" "}
-                  {Math.min(
-                    (currentPage - 1) * pageSize + 1,
-                    filteredPayments.length
-                  )}{" "}
-                  {translations.to}{" "}
-                  {Math.min(currentPage * pageSize, filteredPayments.length)}{" "}
-                  {translations.of} {filteredPayments.length}{" "}
-                  {translations.entries}
-                </p>
-                <Select
-                  value={pageSize.toString()}
-                  onValueChange={(value) => handlePageSizeChange(Number(value))}
-                >
-                  <SelectTrigger className="h-8 w-[70px]">
-                    <SelectValue placeholder={pageSize} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="5">5</SelectItem>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="20">20</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(1)}
-                  disabled={currentPage === 1}
-                >
-                  {translations.first}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={currentPage === 1}
-                >
-                  {translations.previous}
-                </Button>
-                <div className="flex items-center space-x-1">
-                  {getPageNumbers().map((page, index) =>
-                    page < 0 ? (
-                      <span key={`ellipsis-${index}`} className="px-2">
-                        ...
-                      </span>
-                    ) : (
-                      <Button
-                        key={page}
-                        variant={currentPage === page ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handlePageChange(page)}
-                        className="w-8 h-8"
-                      >
-                        {page}
-                      </Button>
-                    )
-                  )}
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                >
-                  {translations.next}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(totalPages)}
-                  disabled={currentPage === totalPages}
-                >
-                  {translations.last}
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{translations.deletePayment}</DialogTitle>
-            <DialogDescription>
-              {translations.deletePaymentWarning}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowDeleteDialog(false);
-                setPaymentToDelete(null);
-              }}
-              disabled={isDeleting}
-            >
-              {translations.cancel}
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={confirmDelete}
-              disabled={isDeleting}
-            >
-              {isDeleting ? (
-                <>
-                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  {translations.deleting}
-                </>
-              ) : (
-                translations.delete
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>{translations.editPayment}</DialogTitle>
-            <DialogDescription>
-              {translations.updatePaymentDetails}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="member" className="text-right">
-                {translations.memberRequired}
-              </Label>
-              <div className="col-span-3 relative member-search-container">
+            <div className="flex items-center space-x-2">
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  id="member"
-                  value={memberSearch}
-                  onChange={handleMemberSearchInput}
-                  placeholder={translations.searchMember}
-                  className="w-full"
+                  placeholder={translations.searchPayments}
+                  value={searchTerm}
+                  onChange={handleSearchInput}
+                  className="pl-8 w-[300px]"
                 />
-                {showMemberList && memberSearch && (
-                  <div className="absolute z-10 w-full mt-1 bg-white rounded-md shadow-lg border">
-                    <div className="max-h-60 overflow-auto">
-                      {members.map((member) => (
-                        <div
-                          key={member.id}
-                          className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-3"
-                          onClick={() => handleMemberSelect(member)}
-                        >
-                          <div className="h-8 w-8 rounded-full overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
-                            {member.avatar ? (
-                              <img
-                                src={member.avatar}
-                                alt={member.name}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <span className="text-xs font-medium">
-                                {member.name.charAt(0).toUpperCase()}
-                              </span>
+              </div>
+            </div>
+
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  {translations.recordPayment}
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                  <DialogTitle>{translations.recordNewPayment}</DialogTitle>
+                  <DialogDescription>
+                    {translations.enterPaymentDetails}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="member" className="text-right">
+                      {translations.memberRequired}
+                    </Label>
+                    <div className="col-span-3 relative member-search-container">
+                      <Input
+                        id="member"
+                        value={memberSearch}
+                        onChange={handleMemberSearchInput}
+                        placeholder={translations.searchMember}
+                        className="w-full"
+                      />
+                      {showMemberList && memberSearch && (
+                        <div className="absolute z-10 w-full mt-1 bg-white rounded-md shadow-lg border">
+                          <div className="max-h-60 overflow-auto">
+                            {members.map((member: Member) => (
+                              <div
+                                key={member.id}
+                                className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-3"
+                                onClick={() => handleMemberSelect(member)}
+                              >
+                                <div className="h-8 w-8 rounded-full overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
+                                  {member.avatar ? (
+                                    <img
+                                      src={member.avatar}
+                                      alt={member.name}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <span className="text-xs font-medium">
+                                      {member.name.charAt(0).toUpperCase()}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="truncate">{member.name}</span>
+                              </div>
+                            ))}
+                            {members.length === 0 && (
+                              <div className="px-4 py-2 text-gray-500">
+                                {translations.noMembersFound}
+                              </div>
                             )}
                           </div>
-                          <span className="truncate">{member.name}</span>
-                        </div>
-                      ))}
-                      {members.length === 0 && (
-                        <div className="px-4 py-2 text-gray-500">
-                          {translations.noMembersFound}
                         </div>
                       )}
                     </div>
                   </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="amount" className="text-right">
+                      {translations.amountRequired}
+                    </Label>
+                    <Input
+                      id="amount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={newPayment.amount}
+                      onChange={(e) =>
+                        setNewPayment({ ...newPayment, amount: e.target.value })
+                      }
+                      className="col-span-3"
+                      placeholder={translations.enterAmount}
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="paidOn" className="text-right">
+                      {translations.paidOnRequired}
+                    </Label>
+                    <Input
+                      id="paidOn"
+                      type="date"
+                      value={newPayment.paidOn}
+                      onChange={(e) =>
+                        setNewPayment({ ...newPayment, paidOn: e.target.value })
+                      }
+                      className="col-span-3"
+                    />
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="submit"
+                    onClick={handleAddPayment}
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        {translations.recordingPayment}
+                      </>
+                    ) : (
+                      translations.recordPayment
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{translations.paymentRecords}</CardTitle>
+              <CardDescription>{translations.trackPayments}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{translations.member}</TableHead>
+                    <TableHead>{translations.amount}</TableHead>
+                    <TableHead>{translations.paidOn}</TableHead>
+                    <TableHead>Active Until</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {getCurrentPageItems().length > 0 ? (
+                    getCurrentPageItems().map((payment: Payment) => (
+                      <TableRow key={payment.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className="h-8 w-8 rounded-full overflow-hidden">
+                              {payment.member?.avatar ? (
+                                <img
+                                  src={payment.member.avatar}
+                                  alt={payment.member.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="h-full w-full bg-muted flex items-center justify-center">
+                                  <span className="text-xs font-medium">
+                                    {payment.member?.name
+                                      ?.charAt(0)
+                                      .toUpperCase()}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <span>{payment.member?.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>${formatCurrency(payment.amount)}</TableCell>
+                        <TableCell>
+                          {payment.paid_on ? formatDate(payment.paid_on) : "-"}
+                        </TableCell>
+                        <TableCell>{formatDate(payment.active_until)}</TableCell>
+                        <TableCell>
+                          {getStatusBadge(getPaymentStatus(payment))}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handlePrintSlip(payment)}
+                            >
+                              <Printer className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleEditPayment(payment)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeletePayment(payment)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-24 text-center">
+                        <div className="flex flex-col items-center justify-center space-y-2">
+                          <DollarSign className="h-8 w-8 text-muted-foreground" />
+                          <p className="text-sm font-medium">
+                            {translations.noPaymentsFound}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {translations.getStartedByRecording}
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsAddDialogOpen(true)}
+                            className="mt-2"
+                          >
+                            <Plus className="mr-2 h-4 w-4" />
+                            {translations.recordPayment}
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between mt-4">
+                <div className="flex items-center space-x-2">
+                  <p className="text-sm text-muted-foreground">
+                    {translations.showing}{" "}
+                    {Math.min(
+                      (currentPage - 1) * pageSize + 1,
+                      filteredPayments.length
+                    )}{" "}
+                    {translations.to}{" "}
+                    {Math.min(currentPage * pageSize, filteredPayments.length)}{" "}
+                    {translations.of}{" "}
+                    {filteredPayments.length}{" "}
+                    {translations.entries}
+                  </p>
+                  <Select
+                    value={pageSize.toString()}
+                    onValueChange={(value) => handlePageSizeChange(Number(value))}
+                  >
+                    <SelectTrigger className="h-8 w-[70px]">
+                      <SelectValue placeholder={pageSize} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">5</SelectItem>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="20">20</SelectItem>
+                      <SelectItem value="50">50</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(1)}
+                    disabled={currentPage === 1}
+                  >
+                    {translations.first}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                  >
+                    {translations.previous}
+                  </Button>
+                  <div className="flex items-center space-x-1">
+                    {getPageNumbers().map((page, index) =>
+                      page < 0 ? (
+                        <span key={`ellipsis-${index}`} className="px-2">
+                          ...
+                        </span>
+                      ) : (
+                        <Button
+                          key={page}
+                          variant={currentPage === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handlePageChange(page)}
+                          className="w-8 h-8"
+                        >
+                          {page}
+                        </Button>
+                      )
+                    )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                  >
+                    {translations.next}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePageChange(totalPages)}
+                    disabled={currentPage === totalPages}
+                  >
+                    {translations.last}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{translations.deletePayment}</DialogTitle>
+              <DialogDescription>
+                {translations.deletePaymentWarning}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDeleteDialog(false);
+                  setPaymentToDelete(null);
+                }}
+                disabled={isDeleting}
+              >
+                {translations.cancel}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={confirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    {translations.deleting}
+                  </>
+                ) : (
+                  translations.delete
                 )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Dialog */}
+        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>{translations.editPayment}</DialogTitle>
+              <DialogDescription>
+                {translations.updatePaymentDetails}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="member" className="text-right">
+                  {translations.memberRequired}
+                </Label>
+                <div className="col-span-3 relative member-search-container">
+                  <Input
+                    id="member"
+                    value={memberSearch}
+                    onChange={handleMemberSearchInput}
+                    placeholder={translations.searchMember}
+                    className="w-full"
+                  />
+                  {showMemberList && memberSearch && (
+                    <div className="absolute z-10 w-full mt-1 bg-white rounded-md shadow-lg border">
+                      <div className="max-h-60 overflow-auto">
+                        {members.map((member: Member) => (
+                          <div
+                            key={member.id}
+                            className="px-4 py-2 hover:bg-gray-100 cursor-pointer flex items-center gap-3"
+                            onClick={() => handleMemberSelect(member)}
+                          >
+                            <div className="h-8 w-8 rounded-full overflow-hidden bg-muted flex items-center justify-center flex-shrink-0">
+                              {member.avatar ? (
+                                <img
+                                  src={member.avatar}
+                                  alt={member.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <span className="text-xs font-medium">
+                                  {member.name.charAt(0).toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                            <span className="truncate">{member.name}</span>
+                          </div>
+                        ))}
+                        {members.length === 0 && (
+                          <div className="px-4 py-2 text-gray-500">
+                            {translations.noMembersFound}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="amount" className="text-right">
+                  {translations.amountRequired}
+                </Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={newPayment.amount}
+                  onChange={(e) =>
+                    setNewPayment({ ...newPayment, amount: e.target.value })
+                  }
+                  className="col-span-3"
+                  placeholder={translations.enterAmount}
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="paidOn" className="text-right">
+                  {translations.paidOnRequired}
+                </Label>
+                <Input
+                  id="paidOn"
+                  type="date"
+                  value={newPayment.paidOn}
+                  onChange={(e) =>
+                    setNewPayment({ ...newPayment, paidOn: e.target.value })
+                  }
+                  className="col-span-3"
+                />
               </div>
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="amount" className="text-right">
-                {translations.amountRequired}
-              </Label>
-              <Input
-                id="amount"
-                type="number"
-                min="0"
-                step="0.01"
-                value={newPayment.amount}
-                onChange={(e) =>
-                  setNewPayment({ ...newPayment, amount: e.target.value })
-                }
-                className="col-span-3"
-                placeholder={translations.enterAmount}
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="paidOn" className="text-right">
-                {translations.paidOnRequired}
-              </Label>
-              <Input
-                id="paidOn"
-                type="date"
-                value={newPayment.paidOn}
-                onChange={(e) =>
-                  setNewPayment({ ...newPayment, paidOn: e.target.value })
-                }
-                className="col-span-3"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setShowEditDialog(false);
-                setEditingPayment(null);
-                setNewPayment({
-                  userId: "",
-                  memberName: "",
-                  amount: "",
-                  paidOn: new Date().toISOString().split("T")[0],
-                });
-                setMemberSearch("");
-              }}
-              disabled={isSubmitting}
-            >
-              {translations.cancel}
-            </Button>
-            <Button
-              type="submit"
-              onClick={handleUpdatePayment}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <>
-                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  {translations.updatingPayment}
-                </>
-              ) : (
-                translations.updatePayment
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowEditDialog(false);
+                  setEditingPayment(null);
+                  setNewPayment({
+                    userId: "",
+                    memberName: "",
+                    amount: "",
+                    paidOn: new Date().toISOString().split("T")[0],
+                  });
+                  setMemberSearch("");
+                }}
+                disabled={isSubmitting}
+              >
+                {translations.cancel}
+              </Button>
+              <Button
+                type="submit"
+                onClick={handleUpdatePayment}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    {translations.updatingPayment}
+                  </>
+                ) : (
+                  translations.updatePayment
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-      {/* Payment Slip Dialog */}
-      <Dialog open={showSlipDialog} onOpenChange={setShowSlipDialog}>
-        {selectedPayment && (
-          <PaymentSlip
-            payment={selectedPayment}
-            onClose={() => {
-              setShowSlipDialog(false);
-              setSelectedPayment(null);
-            }}
-            translations={translations}
-          />
-        )}
-      </Dialog>
-    </div>
+        {/* Payment Slip Dialog */}
+        <Dialog open={showSlipDialog} onOpenChange={setShowSlipDialog}>
+          {selectedPayment && (
+            <PaymentSlip
+              payment={selectedPayment}
+              onClose={() => {
+                setShowSlipDialog(false);
+                setSelectedPayment(null);
+              }}
+              translations={translations}
+            />
+          )}
+        </Dialog>
+      </div>
+    )
   );
 }

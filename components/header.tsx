@@ -4,7 +4,6 @@ import { Bell } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { format } from "date-fns";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -19,6 +18,13 @@ import {
   REALTIME_CHANNEL_STATES,
 } from "@supabase/supabase-js";
 import LanguageSwitcher from "@/components/language-switcher";
+import useSWR from "swr";
+import { fetchMemberByEmail } from "@/lib/server/members";
+import {
+  fetchNotificationsByMemberId,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+} from "@/lib/server/notifications";
 
 const supabase = createClient();
 
@@ -45,19 +51,30 @@ export function Header() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function getUserEmail() {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user?.email) setUserEmail(data.user.email);
+    }
+    getUserEmail();
+  }, []);
+  const { data: member } = useSWR(
+    userEmail ? ["member", userEmail] : null,
+    () => fetchMemberByEmail(userEmail!)
+  );
+  const isAdmin = member?.role === "admin";
 
   const fetchNotifications = async () => {
+    if (!member?.id) return;
     try {
-      const { data, error } = await supabase
-        .from("notifications")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(10);
-
-      if (error) throw error;
-
+      const data = await fetchNotificationsByMemberId(member.id);
       setNotifications(data || []);
-      setUnreadCount(data?.filter((n) => !n.is_read).length || 0);
+      setUnreadCount(
+        (data as Notification[])?.filter((n: Notification) => !n.is_read)
+          .length || 0
+      );
     } catch (error) {
       console.error("Error fetching notifications:", error);
     }
@@ -83,14 +100,14 @@ export function Header() {
             schema: "public",
             table: "notifications",
           },
-          (payload) => {
+          (payload: { new: Notification }) => {
             console.log("New notification received:", payload);
             setNotifications((prev) => [payload.new as Notification, ...prev]);
             setUnreadCount((prev) => prev + 1);
             toast.info(payload.new.message);
           }
         )
-        .subscribe((status) => {
+        .subscribe((status: string) => {
           console.log("Notification subscription status:", status);
           if (status === "SUBSCRIBED") {
             console.log("Successfully subscribed to notifications");
@@ -169,19 +186,28 @@ export function Header() {
 
   const handleMarkAsRead = async (notificationId: string) => {
     try {
-      const { error } = await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .eq("id", notificationId);
-
-      if (error) throw error;
-
+      await markNotificationAsRead(notificationId);
       setNotifications((prev) =>
         prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n))
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
+      toast.success("Notification marked as read");
     } catch (error) {
       console.error("Error marking notification as read:", error);
+      toast.error("Failed to mark as read");
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    if (!member?.id) return;
+    try {
+      await markAllNotificationsAsRead(member.id);
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+      toast.success("All notifications marked as read");
+    } catch (error) {
+      console.error("Error marking all as read:", error);
+      toast.error("Failed to mark all as read");
     }
   };
 
@@ -266,204 +292,89 @@ export function Header() {
   };
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-      <SidebarTrigger className="-ml-1" />
-      <div className="flex flex-1 items-center gap-2">
-        <Breadcrumb />
-      </div>
-      <div className="flex items-center gap-2">
-        <LanguageSwitcher />
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative"
-              title="Notifications"
-            >
-              <Bell className="h-5 w-5" />
-              {unreadCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
-                  {unreadCount}
-                </span>
-              )}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            className="w-[400px] p-0"
-            align="end"
-            side="bottom"
-            sideOffset={5}
-          >
-            <div className="flex items-center justify-between border-b p-4">
-              <div className="flex items-center gap-2">
-                <h4 className="font-medium">Notifications</h4>
+    <header className="w-full border-b bg-background">
+      <div className="flex items-center justify-between max-w-6xl mx-auto px-4 py-2 gap-x-4 p-6">
+        {/* Left: Logo or Title */}
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-bold text-lg truncate">Community Portal</span>
+        </div>
+        {/* Right: Language Switcher, Notifications, User */}
+        <div className="flex items-center gap-4 min-w-0">
+          <LanguageSwitcher />
+          {/* Notifications Popover */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon" className="relative">
+                <Bell className="h-5 w-5" />
                 {unreadCount > 0 && (
-                  <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
-                    {unreadCount} new
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full text-xs px-1">
+                    {unreadCount}
                   </span>
                 )}
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    fetchNotifications();
-                    toast.success("Notifications refreshed");
-                  }}
-                  title="Refresh notifications"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="h-4 w-4"
-                  >
-                    <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                    <path d="M3 3v5h5" />
-                    <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-                    <path d="M16 21h5v-5" />
-                  </svg>
-                </Button>
-                {unreadCount > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      notifications.forEach((n) => {
-                        if (!n.is_read) handleMarkAsRead(n.id);
-                      });
-                    }}
-                  >
-                    Mark all as read
-                  </Button>
-                )}
-              </div>
-            </div>
-            <ScrollArea className="h-[calc(100vh-200px)]">
-              {notifications.length > 0 ? (
-                <div className="p-4">
-                  {notifications.map((notification) => (
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 p-0">
+              <div className="p-2 font-semibold border-b">Notifications</div>
+              <ScrollArea className="h-64">
+                {notifications.length === 0 ? (
+                  <div className="p-4 text-center text-muted-foreground text-sm">
+                    No notifications
+                  </div>
+                ) : (
+                  notifications.map((n) => (
                     <div
-                      key={notification.id}
-                      className={`group mb-4 rounded-lg border p-5 transition-all hover:shadow-md ${
-                        notification.is_read
-                          ? "bg-background hover:bg-accent/50"
-                          : "bg-accent hover:bg-accent/80"
+                      key={n.id}
+                      className={`flex items-start gap-2 px-4 py-2 border-b last:border-b-0 ${
+                        n.is_read ? "bg-background" : "bg-accent/30"
                       }`}
                     >
-                      <div className="flex items-start gap-4">
-                        <div className="mt-1 rounded-full bg-background p-2.5">
-                          {getNotificationIcon(notification.type)}
-                        </div>
-                        <div className="flex-1 space-y-4">
-                          <div className="flex items-start justify-between">
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <p className="text-base font-medium capitalize">
-                                  {notification.type}
-                                </p>
-                                {!notification.is_read && (
-                                  <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
-                                    New
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-sm text-muted-foreground">
-                                {notification.message}
-                              </p>
-                              {notification.metadata?.amount && (
-                                <div className="mt-2 flex items-center gap-2">
-                                  <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    width="16"
-                                    height="16"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    className="h-4 w-4 text-green-500"
-                                  >
-                                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                                  </svg>
-                                  <p className="text-sm font-medium text-green-600">
-                                    ${notification.metadata.amount}
-                                  </p>
-                                </div>
-                              )}
-                              {notification.metadata?.event_name && (
-                                <p className="text-sm text-muted-foreground">
-                                  Event: {notification.metadata.event_name}
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex flex-col items-end gap-2">
-                              <span className="text-xs text-muted-foreground">
-                                {format(
-                                  new Date(notification.created_at),
-                                  "MMM d, h:mm a"
-                                )}
-                              </span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="opacity-0 group-hover:opacity-100"
-                                onClick={() =>
-                                  handleMarkAsRead(notification.id)
-                                }
-                              >
-                                {notification.is_read
-                                  ? "Mark as unread"
-                                  : "Mark as read"}
-                              </Button>
-                            </div>
-                          </div>
-                          <div className="flex gap-3">
-                            {getNotificationAction(notification)}
-                            {notification.type === "payment" && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex-1"
-                                onClick={() => {
-                                  // Navigate to payment history
-                                  window.location.href = "/payments";
-                                }}
-                              >
-                                View Payment History
-                              </Button>
-                            )}
-                          </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{n.message}</div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {format(new Date(n.send_at), "PPpp")}
                         </div>
                       </div>
+                      {!n.is_read && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleMarkAsRead(n.id)}
+                          className="ml-2"
+                        >
+                          Mark as read
+                        </Button>
+                      )}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex h-[calc(100vh-200px)] items-center justify-center">
-                  <div className="text-center">
-                    <Bell className="mx-auto h-16 w-16 text-muted-foreground" />
-                    <p className="mt-6 text-base text-muted-foreground">
-                      No notifications
-                    </p>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      You're all caught up!
-                    </p>
-                  </div>
-                </div>
+                  ))
+                )}
+              </ScrollArea>
+              {notifications.length > 0 && (
+                <Button
+                  variant="ghost"
+                  className="w-full rounded-none border-t"
+                  onClick={async () => {
+                    await markAllNotificationsAsRead(member?.id);
+                    setNotifications((prev) =>
+                      prev.map((n) => ({ ...n, is_read: true }))
+                    );
+                    setUnreadCount(0);
+                    toast.success("All notifications marked as read");
+                  }}
+                >
+                  Mark all as read
+                </Button>
               )}
-            </ScrollArea>
-          </PopoverContent>
-        </Popover>
+            </PopoverContent>
+          </Popover>
+          {/* User Avatar/Profile (optional) */}
+          {user && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium truncate max-w-[100px]">
+                {user.email}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

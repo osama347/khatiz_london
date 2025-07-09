@@ -27,3 +27,35 @@ export async function fetchMembers({
   return { data, count };
 }
 
+export async function fetchMemberByEmail(email: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("members")
+    .select("id, name, email, role")
+    .eq("email", email)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchFullMemberByEmail(email: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("members")
+    .select("*")
+    .eq("email", email)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateMemberById(id: string, updates: Partial<any>) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("members")
+    .update(updates)
+    .eq("id", id)
+    .single();
+  if (error) throw error;
+  return data;
+}

@@ -2,10 +2,12 @@ import { createClient } from "@/utils/supabase/client";
 
 export async function fetchPayments({
   searchTerm = "",
+  memberId,
   page = 1,
   pageSize = 10,
 }: {
   searchTerm?: string;
+  memberId?: string;
   page?: number;
   pageSize?: number;
 }) {
@@ -14,7 +16,9 @@ export async function fetchPayments({
     .from("payments")
     .select("*, member:members(id, name, avatar, email)", { count: "exact" });
 
-  if (searchTerm) {
+  if (memberId) {
+    query = query.eq("member_id", memberId);
+  } else if (searchTerm) {
     query = query.or(
       `member.name.ilike.%${searchTerm}%,member.email.ilike.%${searchTerm}%`
     );

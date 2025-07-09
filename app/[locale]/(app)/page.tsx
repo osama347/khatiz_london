@@ -27,6 +27,8 @@ import { createClient } from "@/utils/supabase/client";
 import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getTranslations } from "@/lib/translations";
+import useSWR from "swr";
+import { fetchMemberByEmail } from "@/lib/server/members";
 
 const supabase = createClient();
 
@@ -67,8 +69,8 @@ interface Activity {
 
 function TypographyIntro() {
   return (
-    <section className="w-full px-4 md:px-8 pt-8 pb-4">
-      <div className="max-w-3xl mx-auto text-center">
+    <section className="w-full p-0 m-0 pt-8 pb-4">
+      <div className="w-full m-0 text-center">
         <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-primary mb-2">
           Khatiz London
         </h1>
@@ -104,12 +106,49 @@ export default function Dashboard({
   });
   const [isLoading, setIsLoading] = useState(true);
   const [translations, setTranslations] = useState<any>({});
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
     // Load translations
     getTranslations(resolvedParams.locale).then(setTranslations);
     fetchDashboardStats();
   }, [resolvedParams.locale]);
+
+  useEffect(() => {
+    // Get the current Supabase user email
+    async function getUserEmail() {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user?.email) setUserEmail(data.user.email);
+    }
+    getUserEmail();
+  }, []);
+
+  // Fetch member info (including role) using SWR
+  const { data: member, isLoading: memberLoading } = useSWR(
+    userEmail ? ["member", userEmail] : null,
+    () => fetchMemberByEmail(userEmail!)
+  );
+
+  if (memberLoading || !userEmail) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        Loading...
+      </div>
+    );
+  }
+  if (member?.role === "member") {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-2">Welcome, {member.name}!</h1>
+          <p className="text-muted-foreground">
+            This is your member dashboard. Please contact an admin if you need
+            more access.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   async function fetchDashboardStats() {
     try {
@@ -219,7 +258,7 @@ export default function Dashboard({
     .slice(0, 5);
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col ">
       {/* App Introduction Section */}
       <TypographyIntro />
       {/* End App Introduction Section */}

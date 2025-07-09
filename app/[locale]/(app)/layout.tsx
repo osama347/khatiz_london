@@ -1,10 +1,4 @@
 import { Geist, Geist_Mono } from "next/font/google";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarRail,
-} from "@/components/ui/sidebar";
-import { SidebarLeft } from "@/components/sidebar-left";
 import { Header } from "@/components/header";
 import { Suspense } from "react";
 import { AuthCheckWrapper } from "./auth-check-wrapper";
@@ -32,18 +26,14 @@ export default function AppLayout({
   params: { locale: string };
 }) {
   return (
-    <div className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+    <div
+      className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen w-full flex flex-col`}
+    >
       <AuthCheckWrapper>
-        <SidebarProvider>
-          <SidebarLeft />
-          <SidebarInset>
-            <Header />
-            <main className="flex-1">
-              <Suspense fallback={<div />}>{children}</Suspense>
-            </main>
-            <SidebarRail />
-          </SidebarInset>
-        </SidebarProvider>
+        <Header />
+        <main className="flex-1">
+          <Suspense fallback={<div />}>{children}</Suspense>
+        </main>
       </AuthCheckWrapper>
     </div>
   );

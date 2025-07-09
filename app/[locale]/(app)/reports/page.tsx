@@ -55,6 +55,8 @@ import { getTranslations, Locale as SupportedLocale } from "@/lib/translations";
 import { useMemo, useCallback } from "react";
 import useSWR from "swr";
 import { fetchPaymentTrends } from "@/lib/server/reports";
+import { fetchMemberByEmail } from "@/lib/server/members";
+import { useRouter } from "next/navigation";
 
 interface Payment {
   id: string;
@@ -108,6 +110,9 @@ export default function ReportsPage({
   const supabase = createClient();
   const reportRef = useRef<HTMLDivElement>(null);
   const [timeRange, setTimeRange] = useState<"week" | "month" | "year">("week");
+  const [userId, setUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const router = useRouter();
 
   // Load translations on mount or locale change
   useEffect(() => {
@@ -185,6 +190,30 @@ export default function ReportsPage({
     loadData();
   }, [supabase]);
 
+  useEffect(() => {
+    async function getUserId() {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user?.id) setUserId(data.user.id);
+    }
+    getUserId();
+  }, []);
+  useEffect(() => {
+    async function getUserEmail() {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user?.email) setUserEmail(data.user.email);
+    }
+    getUserEmail();
+  }, []);
+  const { data: member, isLoading } = useSWR(
+    userEmail ? ["member", userEmail] : null,
+    () => fetchMemberByEmail(userEmail!)
+  );
+  useEffect(() => {
+    if (!isLoading && member && member.role !== "admin") {
+      router.replace("/profile");
+    }
+  }, [isLoading, member, router]);
+
   // Memoized calculations
   const totalRevenue = useMemo(
     () => payments.reduce((sum, payment) => sum + payment.amount, 0),
@@ -206,7 +235,6 @@ export default function ReportsPage({
     () => members.filter((m) => m.status === "Suspended").length,
     [members]
   );
-
   const memberStatusData = useMemo(
     () => [
       { name: t?.Active || "Active", value: activeMembers },
@@ -215,7 +243,6 @@ export default function ReportsPage({
     ],
     [activeMembers, inactiveMembers, suspendedMembers, t]
   );
-
   const topPayingMembers = useMemo(
     () =>
       Object.entries(
@@ -230,14 +257,11 @@ export default function ReportsPage({
         .slice(0, 5),
     [payments, t]
   );
-
   const handlePrint = useCallback(() => {
     window.print();
   }, []);
-
   const handleDownloadPDF = useCallback(async () => {
     try {
-      // This will be implemented once react-to-pdf is installed
       toast.info(
         "PDF download functionality will be available after installing required packages"
       );
@@ -246,12 +270,9 @@ export default function ReportsPage({
       toast.error("Failed to generate PDF report");
     }
   }, []);
-
   const handleDownloadCSV = useCallback(() => {
     try {
-      // Prepare data for CSV
       const csvData = [
-        // Header row
         ["Report Type", "Value"],
         [
           "Total Revenue",
@@ -269,7 +290,7 @@ export default function ReportsPage({
         ],
         ["Active Members", activeMembers.toString()],
         ["Total Members", members.length.toString()],
-        [], // Empty row
+        [],
         ["Top Paying Members"],
         ...topPayingMembers.map((member) => [
           member.name,
@@ -279,11 +300,7 @@ export default function ReportsPage({
           }).format(member.amount),
         ]),
       ];
-
-      // Convert to CSV string
       const csvContent = csvData.map((row) => row.join(",")).join("\n");
-
-      // Create and trigger download
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const link = document.createElement("a");
       const url = URL.createObjectURL(blob);
@@ -306,14 +323,11 @@ export default function ReportsPage({
     members.length,
     topPayingMembers,
   ]);
-
   const processMonthlyPayments = useCallback(
     (payments: Payment[]): MonthlyPayment[] => {
       const monthlyMap = new Map<string, MonthlyPayment>();
-
       payments.forEach((payment) => {
         const month = format(new Date(payment.paid_on), "MMMM yyyy");
-
         if (!monthlyMap.has(month)) {
           monthlyMap.set(month, {
             month,
@@ -322,7 +336,6 @@ export default function ReportsPage({
             members: [],
           });
         }
-
         const monthData = monthlyMap.get(month)!;
         monthData.totalAmount += payment.amount;
         monthData.paymentCount += 1;
@@ -332,14 +345,12 @@ export default function ReportsPage({
           paid_on: payment.paid_on,
         });
       });
-
       return Array.from(monthlyMap.values()).sort(
         (a, b) => new Date(b.month).getTime() - new Date(a.month).getTime()
       );
     },
     []
   );
-
   const renderReportContent = useCallback(() => {
     if (!t) return <div />;
     switch (selectedReport) {
@@ -868,7 +879,9 @@ export default function ReportsPage({
     );
   }
 
-  return (
+  return isLoading ||
+    !userEmail ||
+    (member && member.role !== "admin") ? null : (
     <div className="flex flex-col">
       <div
         className="flex-1 space-y-4 p-4 md:p-8"

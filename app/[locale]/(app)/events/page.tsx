@@ -74,6 +74,8 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { fetchEvents } from "@/lib/server/events";
 import useSWR from "swr";
+import { fetchMemberByEmail } from "@/lib/server/members";
+import { useRouter } from "next/navigation";
 
 interface Event {
   id: string;
@@ -121,6 +123,8 @@ export default function EventsPage({
     name: string;
     avatar?: string;
   } | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const router = useRouter();
 
   // Load translations
   useEffect(() => {
@@ -307,6 +311,34 @@ export default function EventsPage({
       return { status: "Upcoming", color: "bg-green-100 text-green-800" };
     }
   }, []);
+
+  useEffect(() => {
+    async function getUserId() {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user?.id) setUserId(data.user.id);
+    }
+    getUserId();
+  }, []);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  useEffect(() => {
+    async function getUserEmail() {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user?.email) setUserEmail(data.user.email);
+    }
+    getUserEmail();
+  }, []);
+  const { data: member, isLoading } = useSWR(
+    userEmail ? ["member", userEmail] : null,
+    () => fetchMemberByEmail(userEmail!)
+  );
+  useEffect(() => {
+    if (!isLoading && member && member.role !== "admin") {
+      router.replace("/profile");
+    }
+  }, [isLoading, member, router]);
+  if (isLoading || !userEmail || (member && member.role !== "admin")) {
+    return null;
+  }
 
   if (loading) {
     return (
