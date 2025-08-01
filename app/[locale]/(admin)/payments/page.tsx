@@ -191,13 +191,12 @@ const PaymentSlip = ({
               <!DOCTYPE html>
               <html>
                 <head>
-                  <title>${translations.paymentReceipt}</title>
+                  <title>Payment Receipt</title>
                   <style>
                     body {
                       font-family: Arial, sans-serif;
                       margin: 0;
                       padding: 20px;
-                      color: #333;
                     }
                     .receipt {
                       max-width: 800px;
@@ -259,73 +258,73 @@ const PaymentSlip = ({
                     <div class="header">
                       <div class="bilingual">
                         <div class="language">
-                          <h1>${translations.en.paymentReceipt}</h1>
-                          <p>${translations.en.community}</p>
+                          <h1>Payment Receipt</h1>
+                          <p>Khatiz London Community</p>
                         </div>
                         <div class="language ps">
-                          <h1>${translations.ps.paymentReceipt}</h1>
-                          <p>${translations.ps.community}</p>
+                          <h1>د تادیاتو رسید</h1>
+                          <p>د خټیز لندن ټولنه</p>
                         </div>
                       </div>
                     </div>
                     <div class="details">
                       <div class="row">
                         <div class="language">
-                          <strong>${translations.en.receiptNo}:</strong>
+                          <strong>Receipt No:</strong>
                           <span>${payment.id}</span>
                         </div>
                         <div class="language ps">
-                          <strong>${translations.ps.receiptNo}:</strong>
+                          <strong>د رسید شمیره:</strong>
                           <span>${payment.id}</span>
                         </div>
                       </div>
                       <div class="row">
                         <div class="language">
-                          <strong>${translations.en.date}:</strong>
+                          <strong>Date:</strong>
                           <span>${formatDate(payment.paid_on)}</span>
                         </div>
                         <div class="language ps">
-                          <strong>${translations.ps.date}:</strong>
+                          <strong>نیټه:</strong>
                           <span>${formatDate(payment.paid_on)}</span>
                         </div>
                       </div>
                       <div class="row">
                         <div class="language">
-                          <strong>${translations.en.member}:</strong>
-                          <span>${payment.member?.name}</span>
+                          <strong>Member:</strong>
+                          <span>${payment.member?.name || 'N/A'}</span>
                         </div>
                         <div class="language ps">
-                          <strong>${translations.ps.member}:</strong>
-                          <span>${payment.member?.name}</span>
+                          <strong>غړی:</strong>
+                          <span>${payment.member?.name || 'N/A'}</span>
                         </div>
                       </div>
                       <div class="row">
                         <div class="language">
-                          <strong>${translations.en.amount}:</strong>
+                          <strong>Amount:</strong>
                           <span>${formatCurrency(payment.amount)}</span>
                         </div>
                         <div class="language ps">
-                          <strong>${translations.ps.amount}:</strong>
+                          <strong>مقدار:</strong>
                           <span>${formatCurrency(payment.amount)}</span>
                         </div>
                       </div>
                       <div class="row">
                         <div class="language">
-                          <strong>${translations.en.status}:</strong>
+                          <strong>Status:</strong>
                           <span>${status.en}</span>
                         </div>
                         <div class="language ps">
-                          <strong>${translations.ps.status}:</strong>
+                          <strong>حالت:</strong>
                           <span>${status.ps}</span>
                         </div>
                       </div>
                       <div class="row">
                         <div class="language">
-                          <strong>${translations.en.validUntil}:</strong>
+                          <strong>Valid Until:</strong>
                           <span>${formatDate(payment.active_until)}</span>
                         </div>
                         <div class="language ps">
-                          <strong>${translations.ps.validUntil}:</strong>
+                          <strong>د اعتبار تر:</strong>
                           <span>${formatDate(payment.active_until)}</span>
                         </div>
                       </div>
@@ -333,12 +332,12 @@ const PaymentSlip = ({
                     <div class="footer">
                       <div class="bilingual">
                         <div class="language">
-                          <p>${translations.en.thankYou}</p>
-                          <p>${translations.en.computerGenerated}</p>
+                          <p>Thank you for your payment!</p>
+                          <p>This is a computer generated receipt.</p>
                         </div>
                         <div class="language ps">
-                          <p>${translations.ps.thankYou}</p>
-                          <p>${translations.ps.computerGenerated}</p>
+                          <p>ستاسو د تادیاتو څخه مننه!</p>
+                          <p>دا د کمپیوټر لخوا جوړ شوی رسید دی.</p>
                         </div>
                       </div>
                     </div>
@@ -350,13 +349,15 @@ const PaymentSlip = ({
               printWindow.document.write(slipContent);
               printWindow.document.close();
               printWindow.focus();
-              printWindow.print();
-              printWindow.close();
+              setTimeout(() => {
+                printWindow.print();
+                printWindow.close();
+              }, 500);
             }
           }}
         >
           <Printer className="mr-2 h-4 w-4" />
-          {translations.printReceipt}
+          Print Receipt
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -809,10 +810,11 @@ export default function PaymentsPage({
       {translations.back || "Back"}
     </Button>
   </div>
-          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
+          {/* Stats Cards - Responsive Grid Layout */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             
           {/* Total Collected Card */}
-          <Card className="col-span-2 sm:col-span-1 shadow-sm">
+          <Card className="shadow-sm">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3">
               <CardTitle className="text-sm font-medium">
                 {translations.totalCollected}
@@ -830,55 +832,52 @@ export default function PaymentsPage({
               </p>
             </CardContent>
           </Card>
+          {/* Pending Payments Card */}
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3">
+              <CardTitle className="text-sm font-medium">
+                {translations.pendingPayments}
+              </CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="p-3">
+              <div className="text-xl sm:text-2xl font-bold">
+                {
+                  payments.filter(
+                    (p: Payment) => getPaymentStatus(p) === "Pending"
+                  ).length
+                }
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {translations.awaitingPayment}
+              </p>
+            </CardContent>
+          </Card>
 
-          {/* Other stat cards in a scrollable container on mobile */}
-          <div className="col-span-2 sm:col-span-1 flex sm:block gap-2 overflow-x-auto sm:overflow-visible pb-2 sm:pb-0">
-            {/* Pending Payments Card */}
-            <Card className="flex-shrink-0 w-[180px] sm:w-auto">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3">
-                <CardTitle className="text-sm font-medium">
-                  {translations.pendingPayments}
-                </CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent className="p-3">
-                <div className="text-xl sm:text-2xl font-bold">
-                  {
-                    payments.filter(
-                      (p: Payment) => getPaymentStatus(p) === "Pending"
-                    ).length
-                  }
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {translations.awaitingPayment}
-                </p>
-              </CardContent>
-            </Card>
+          {/* Overdue Card */}
+          <Card className="shadow-sm">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3">
+              <CardTitle className="text-sm font-medium">
+                {translations.overdue}
+              </CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="p-3">
+              <div className="text-xl sm:text-2xl font-bold">
+                {
+                  payments.filter(
+                    (p: Payment) => getPaymentStatus(p) === "Overdue"
+                  ).length
+                }
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {translations.requireAttention}
+              </p>
+            </CardContent>
+          </Card>
 
-            {/* Overdue Card */}
-            <Card className="flex-shrink-0 w-[180px] sm:w-auto">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3">
-                <CardTitle className="text-sm font-medium">
-                  {translations.overdue}
-                </CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent className="p-3">
-                <div className="text-xl sm:text-2xl font-bold">
-                  {
-                    payments.filter(
-                      (p: Payment) => getPaymentStatus(p) === "Overdue"
-                    ).length
-                  }
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {translations.requireAttention}
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Average Payment Card */}
-            <Card className="flex-shrink-0 w-[180px] sm:w-auto">
+          {/* Average Payment Card */}
+          <Card className="shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 p-3">
                 <CardTitle className="text-sm font-medium">
                   {translations.averagePayment}
@@ -1117,7 +1116,7 @@ export default function PaymentsPage({
                             </div>
                           </TableCell>
                           <TableCell>
-                            ${formatCurrency(payment.amount)}
+                            {formatCurrency(payment.amount)}
                           </TableCell>
                           <TableCell>
                             {payment.paid_on
@@ -1449,7 +1448,7 @@ export default function PaymentsPage({
         )}
       </Dialog>
         </div>
-      </div>
-        
+      
+   
   );
 }

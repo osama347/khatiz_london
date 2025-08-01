@@ -223,6 +223,7 @@ export function Header() {
         {/* Left: Logo and Mobile Menu */}
         <div className="flex items-center gap-3">
           {/* Mobile Menu Button */}
+          {isAdmin && (
           <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="md:hidden">
@@ -259,49 +260,49 @@ export function Header() {
                 )}
 
                 {/* Common Actions for All Users */}
+                {/* 
                 <div className="px-4 py-3">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                    Settings
+                  </div>
 
-  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-    Settings
-  </div>
+                  Language Switcher in Mobile Menu
+                  <div className="flex items-center justify-between px-3 py-2">
+                    <div className="text-sm font-medium">Language</div>
+                    <LanguageSwitcher />
+                  </div>
 
-  {/* Language Switcher in Mobile Menu */}
-  <div className="flex items-center justify-between px-3 py-2">
-    <div className="text-sm font-medium">Language</div>
-    <LanguageSwitcher />
-  </div>
+                  <Button
+                    variant="ghost"
+                    className="justify-start gap-3 h-12 w-full"
+                    onClick={() => handleNavigation("/profile")}
+                  >
+                    <Users className="h-5 w-5" />
+                    Profile
+                  </Button>
 
-  <Button
-    variant="ghost"
-    className="justify-start gap-3 h-12 w-full"
-    onClick={() => handleNavigation("/profile")}
-  >
-    <Users className="h-5 w-5" />
-    Profile
-  </Button>
-
-  <Button
-    variant="ghost"
-    className="justify-start gap-3 h-12 w-full text-red-600 hover:text-red-700 hover:bg-red-50"
-    onClick={async () => {
-      await supabase.auth.signOut();
-      window.location.href = "/";
-      setIsMobileMenuOpen(false);
-    }}
-  >
-    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-      />
-    </svg>
-    Logout
-  </Button>
-
+                  <Button
+                    variant="ghost"
+                    className="justify-start gap-3 h-12 w-full text-red-600 hover:text-red-700 hover:bg-red-50"
+                    onClick={async () => {
+                      await supabase.auth.signOut();
+                      window.location.href = "/";
+                      setIsMobileMenuOpen(false);
+                    }}
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                      />
+                    </svg>
+                    Logout
+                  </Button>
                 </div>
-                </div>
+                */}
+              </div>
 
               {/* Mobile User Profile in Sheet */}
               {user && (
@@ -321,7 +322,8 @@ export function Header() {
               )}
             </SheetContent>
           </Sheet>
-
+          )}
+          
           {/* Logo */}
           <span className="font-bold text-lg">Khatiz London</span>
         </div>
@@ -363,7 +365,7 @@ export function Header() {
         {/* Right: Language Switcher, Notifications, User */}
         <div className="flex items-center gap-2">
           {/* Language Switcher - Always visible on desktop */}
-          <div className="hidden sm:block">
+          <div className=" sm:block">
             <LanguageSwitcher />
           </div>
 

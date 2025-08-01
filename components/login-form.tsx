@@ -9,7 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
+import Image from "next/image";
 import { toast } from "sonner";
+import logo from "@/public/logo-no-background.png"
 
 const translations = {
   en: {
@@ -88,8 +90,8 @@ export default function LoginForm({
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
-      <Card className="overflow-hidden p-0 max-w-5xl w-full mx-auto">
-        <CardContent className="grid p-0 md:grid-cols-2">
+      <Card className="overflow-hidden p-0 max-w-6xl w-full mx-auto">
+        <CardContent className="grid p-0 md:grid-cols-[1fr_1.2fr]">
           {/* Left: Login Form */}
           <form
             className="p-6 md:p-8 flex flex-col gap-6"
@@ -193,13 +195,25 @@ export default function LoginForm({
             </div>
           </form>
           {/* Right: Illustration */}
-          <div className="bg-muted relative hidden md:block min-h-[400px] min-w-[500px]">
-            <img
-              src="/placeholder.svg"
-              alt="Image"
-              className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.2] dark:grayscale"
-            />
+          <div className="bg-muted relative hidden md:flex items-center justify-center min-h-[500px] p-8">
+            <div className="flex flex-col items-center justify-center space-y-4">
+              <Image
+                src={logo}
+                alt="Logo"
+                width={280}
+                height={280}
+                className="object-contain dark:brightness-[0.9] transition-all duration-300 hover:scale-105"
+                priority
+              />
+              <div className="text-center space-y-2">
+                <h2 className="text-2xl font-bold text-foreground/80">Welcome Back</h2>
+                <p className="text-sm text-muted-foreground max-w-xs">
+                  Sign in to access your account and continue your journey with us.
+                </p>
+              </div>
+            </div>
           </div>
+
         </CardContent>
       </Card>
       <div className="text-muted-foreground *:[a]:hover:text-primary text-center text-xs text-balance *:[a]:underline *:[a]:underline-offset-4 mt-4">

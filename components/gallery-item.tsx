@@ -49,7 +49,10 @@ export function GalleryItemComponent({ item, onLike }: GalleryItemProps) {
               alt={item.caption}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
               onError={(e) => {
-                e.currentTarget.src = "/placeholder.svg?height=400&width=400&text=Image+Error"
+                // Prevent infinite loop by checking if we're already showing the error placeholder
+                if (!e.currentTarget.src.includes('Image+Error')) {
+                  e.currentTarget.src = "/placeholder.svg?height=400&width=400&text=Image+Error"
+                }
               }}
             />
           )}

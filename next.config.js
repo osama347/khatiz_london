@@ -13,6 +13,9 @@ module.exports = {
         protocol: "https",
         hostname: "lgqztytyzjziuppwfgvj.supabase.co",
       },
+      
     ],
+    
   },
+  allowedOrigins: ["*"],
 };

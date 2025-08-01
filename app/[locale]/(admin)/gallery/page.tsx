@@ -160,17 +160,7 @@ export default function GalleryPage() {
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b">
-          <div className="flex items-center justify-between p-4">
-            <h1 className="text-xl font-semibold">Community Gallery</h1>
-            <Link href="/">
-              <Button variant="outline" size="sm">
-                Back to Feed
-              </Button>
-            </Link>
-          </div>
-        </div>
+        
 
         {/* Upload Section */}
         <div className="p-4 border-b">
