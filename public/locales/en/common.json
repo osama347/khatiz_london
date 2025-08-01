@@ -158,5 +158,7 @@
   "Active": "Active",
   "Inactive": "Inactive",
   "Suspended": "Suspended",
-  "user": "User"
+  "user": "User",
+  "back": "Back"
+
 }

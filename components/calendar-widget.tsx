@@ -149,7 +149,7 @@ export function CalendarWidget({
         <div
           key={day}
           className={cn(
-            "h-24 p-1 border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors",
+            "min-h-[60px] sm:h-24 p-1 border border-gray-100 cursor-pointer hover:bg-gray-50 transition-colors",
             isToday && "bg-blue-50 border-blue-200",
             isSelected && "bg-blue-100 border-blue-300"
           )}
@@ -157,28 +157,29 @@ export function CalendarWidget({
         >
           <div
             className={cn(
-              "text-sm font-medium mb-1",
+              "text-xs sm:text-sm font-medium mb-1",
               isToday && "text-blue-600"
             )}
           >
             {day}
           </div>
-          <div className="space-y-1">
+          <div className="space-y-0.5 sm:space-y-1">
             {events.slice(0, 2).map((event) => (
               <div
                 key={event.id}
                 className={cn(
-                  "text-xs px-1 py-0.5 rounded border flex items-center gap-1 truncate",
+                  "text-[10px] sm:text-xs px-0.5 sm:px-1 py-0.5 rounded border flex items-center gap-0.5 sm:gap-1 truncate",
                   getEventColor()
                 )}
               >
                 {getEventIcon()}
-                <span className="truncate">{event.title}</span>
+                <span className="truncate hidden sm:inline">{event.title}</span>
+                <span className="truncate sm:hidden">{event.title.slice(0, 6)}...</span>
               </div>
             ))}
             {events.length > 2 && (
-              <div className="text-xs text-gray-500">
-                +{events.length - 2} more
+              <div className="text-[10px] sm:text-xs text-gray-500">
+                +{events.length - 2}
               </div>
             )}
           </div>
@@ -195,43 +196,45 @@ export function CalendarWidget({
     <div className="grid gap-4 lg:grid-cols-3">
       <Card className="lg:col-span-2">
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <CardTitle>{translations.calendarTitle || "Calendar"}</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-xl">{translations.calendarTitle || "Calendar"}</CardTitle>
+              <CardDescription className="text-sm">
                 {translations.calendarDescription ||
                   "Track events and important dates"}
               </CardDescription>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 self-stretch sm:self-center">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => navigateMonth("prev")}
+                className="h-8 w-8 p-0"
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <div className="text-lg font-semibold min-w-[140px] text-center">
+              <div className="text-sm sm:text-base font-semibold min-w-[120px] text-center">
                 {monthNames[month]} {year}
               </div>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => navigateMonth("next")}
+                className="h-8 w-8 p-0"
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-2 sm:p-6">
           <div className="grid grid-cols-7 gap-0 mb-2">
             {weekDays.map((day) => (
               <div
                 key={day}
-                className="p-2 text-center text-sm font-medium text-gray-500 border-b"
+                className="p-1 sm:p-2 text-center text-xs sm:text-sm font-medium text-gray-500 border-b"
               >
-                {day}
+                {day.slice(0, 1)}
               </div>
             ))}
           </div>
@@ -240,9 +243,9 @@ export function CalendarWidget({
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>{translations.eventsTitle || "Events"}</CardTitle>
-          <CardDescription>
+        <CardHeader className="space-y-2">
+          <CardTitle className="text-xl">{translations.eventsTitle || "Events"}</CardTitle>
+          <CardDescription className="text-sm">
             {selectedDate
               ? `${translations.eventsFor || "Events for"} ${new Date(
                   selectedDate
@@ -256,34 +259,34 @@ export function CalendarWidget({
                 "Select a date to view events"}
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-2 sm:p-6">
           {selectedEvents.length > 0 ? (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {selectedEvents.map((event) => (
-                <div key={event.id} className="space-y-3 p-3 rounded-lg border">
-                  <div className="flex items-center gap-2">
-                    <div className={cn("p-2 rounded-full", getEventColor())}>
+                <div key={event.id} className="space-y-2 p-2 sm:p-3 rounded-lg border">
+                  <div className="flex items-start sm:items-center gap-2">
+                    <div className={cn("p-1.5 sm:p-2 rounded-full shrink-0", getEventColor())}>
                       {getEventIcon()}
                     </div>
-                    <div>
-                      <h4 className="font-medium">{event.title}</h4>
-                      <p className="text-sm text-muted-foreground">
+                    <div className="min-w-0">
+                      <h4 className="font-medium text-sm sm:text-base truncate">{event.title}</h4>
+                      <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2">
                         {event.description}
                       </p>
                     </div>
                   </div>
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4" />
-                      <span>{formatTime(event.event_date)}</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs sm:text-sm text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                      <span className="truncate">{formatTime(event.event_date)}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-4 w-4" />
-                      <span>{event.location}</span>
+                    <div className="flex items-center gap-1.5">
+                      <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                      <span className="truncate">{event.location}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4" />
-                      <span>
+                    <div className="flex items-center gap-1.5 col-span-2 sm:col-span-1">
+                      <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                      <span className="truncate">
                         {translations.createdBy || "Created by"}:{" "}
                         {event.members?.name}
                       </span>
@@ -293,7 +296,7 @@ export function CalendarWidget({
               ))}
             </div>
           ) : (
-            <div className="text-center text-muted-foreground py-4">
+            <div className="text-center text-muted-foreground py-4 text-sm">
               {selectedDate
                 ? translations.noEventsScheduled || "No events scheduled"
                 : translations.selectDateToViewEvents ||

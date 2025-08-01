@@ -4,6 +4,7 @@ import type React from "react";
 
 import { useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -437,11 +438,20 @@ export default function UserProfile() {
 
   return (
     <div className="container mx-auto p-3 sm:p-4 max-w-6xl">
-      {/* Logout Button */}
-      <div className="flex justify-end mb-2">
-        <Button variant="outline" size="sm" onClick={handleSignOut}>
-          Log out
+      {/* Navigation Buttons */}
+      <div className="flex justify-between items-center mb-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.back()}
+          className="gap-2"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
         </Button>
+        {/* <Button variant="outline" size="sm" onClick={handleSignOut}>
+          Log out
+        </Button> */}
       </div>
       {/* Header Section */}
       <Card className="mb-4 sm:mb-6">

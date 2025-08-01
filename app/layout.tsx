@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "sonner";
-import { PerformanceMonitor } from "@/components/performance-monitor";
+// import { PerformanceMonitor } from "@/components/performance-monitor";
 
 export const metadata: Metadata = {
   title: "East London",
@@ -29,7 +29,7 @@ export default function RootLayout({
       <body>
         {children}
         <Toaster />
-        <PerformanceMonitor />
+        {/* <PerformanceMonitor /> */}
       </body>
     </html>
   );

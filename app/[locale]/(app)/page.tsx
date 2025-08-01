@@ -21,6 +21,10 @@ import {
   MapPin,
   Clock,
   Eye,
+  Heart,
+  MessageCircle,
+  Share2,
+  ImageIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
@@ -29,6 +33,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getTranslations } from "@/lib/translations";
 import useSWR from "swr";
 import { fetchMemberByEmail } from "@/lib/server/members";
+import { Feed } from "@/components/social";
+import { PostComposer } from "@/components/social/create-post";
+import type { PostData } from "@/components/social/post"
+import { Separator } from "@/components/ui/separator";
+
 
 const supabase = createClient();
 
@@ -107,6 +116,97 @@ export default function Dashboard({
   const [isLoading, setIsLoading] = useState(true);
   const [translations, setTranslations] = useState<any>({});
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [feedPosts, setFeedPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<PostData[]>([
+    {
+      id: "1",
+      user: {
+        name: "Sarah Chen",
+        username: "sarahc",
+        avatar: "https://picsum.photos/200",
+      },
+      content:
+        "Just finished reading an amazing book about sustainable design. The intersection of technology and environmental consciousness is fascinating! 🌱✨",
+      image: "https://picsum.photos/200",
+      timestamp: "2h",
+      likes: 24,
+      comments: 8,
+      reposts: 3,
+      isLiked: false,
+      isBookmarked: false,
+    },
+    {
+      id: "2",
+      user: {
+        name: "Alex Rivera",
+        username: "alexr",
+        avatar: "https://picsum.photos/200",
+      },
+      content:
+        "Working on a new project that combines AI and creative writing. The possibilities are endless when technology meets human creativity. What are your thoughts on AI-assisted creativity?",
+      timestamp: "4h",
+      likes: 156,
+      comments: 32,
+      reposts: 18,
+      isLiked: true,
+      isBookmarked: true,
+    },
+    {
+      id: "3",
+      user: {
+        name: "Maya Patel",
+        username: "mayap",
+        avatar: "https://picsum.photos/200",
+      },
+      content:
+        "Beautiful sunset from my morning hike. Sometimes you need to disconnect to reconnect with what matters most. 🌅",
+      image: "https://picsum.photos/200",
+      timestamp: "6h",
+      likes: 89,
+      comments: 15,
+      reposts: 7,
+      isLiked: false,
+      isBookmarked: false,
+    }
+  ]);
+
+  const handleLike = (postId: string) => {
+    setPosts(
+      posts.map((post) =>
+        post.id === postId
+          ? {
+              ...post,
+              isLiked: !post.isLiked,
+              likes: post.isLiked ? post.likes - 1 : post.likes + 1,
+            }
+          : post,
+      ),
+    )
+  }
+
+  const handleBookmark = (postId: string) => {
+    setPosts(posts.map((post) => (post.id === postId ? { ...post, isBookmarked: !post.isBookmarked } : post)))
+  }
+
+  const handleNewPost = (content: string) => {
+    const post: PostData = {
+      id: Date.now().toString(),
+      user: {
+        name: "You",
+        username: "you",
+        avatar: "https://picsum.photos/200",
+      },
+      content,
+      timestamp: "now",
+      likes: 0,
+      comments: 0,
+      reposts: 0,
+      isLiked: false,
+      isBookmarked: false,
+    }
+    setPosts([post, ...posts])
+  }
 
   useEffect(() => {
     // Load translations
@@ -129,6 +229,10 @@ export default function Dashboard({
     () => fetchMemberByEmail(userEmail!)
   );
 
+
+
+
+
   if (memberLoading || !userEmail) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -137,16 +241,22 @@ export default function Dashboard({
     );
   }
   if (member?.role === "member") {
+
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold mb-2">Welcome, {member.name}!</h1>
-          <p className="text-muted-foreground">
-            This is your member dashboard. Please contact an admin if you need
-            more access.
-          </p>
-        </div>
+       <div className="min-h-screen bg-background">
+      <div className="max-w-2xl mx-auto">
+       
+        
+
+        {/* Post Composer */}
+        <PostComposer onPost={handleNewPost} />
+
+        <Separator />
+
+        {/* Posts Feed */}
+        <Feed posts={posts} onLike={handleLike} onBookmark={handleBookmark} />
       </div>
+    </div>
     );
   }
 
@@ -265,8 +375,8 @@ export default function Dashboard({
       <div className="flex-1 space-y-4 p-4 md:p-8">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Link href={`/${resolvedParams.locale}/members`}>
-            <Card className="hover:bg-accent cursor-pointer transition-colors">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <Card className="hover:bg-accent cursor-pointer transition-colors min-h-[90px] sm:min-h-[120px]">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-3 sm:p-6">
                 <CardTitle className="text-sm font-medium">
                   {translations.totalMembers || "Total Members"}
                 </CardTitle>

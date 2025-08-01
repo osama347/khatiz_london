@@ -11,7 +11,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Breadcrumb } from "@/components/breadcrumb";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import {
   RealtimeChannel,
@@ -19,12 +19,20 @@ import {
 } from "@supabase/supabase-js";
 import LanguageSwitcher from "@/components/language-switcher";
 import useSWR from "swr";
-import { fetchMemberByEmail } from "@/lib/server/members";
+import { fetchFullMemberByEmail } from "@/lib/server/members";
 import {
   fetchNotificationsByMemberId,
   markNotificationAsRead,
   markAllNotificationsAsRead,
 } from "@/lib/server/notifications";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const supabase = createClient();
 
@@ -62,7 +70,7 @@ export function Header() {
   }, []);
   const { data: member } = useSWR(
     userEmail ? ["member", userEmail] : null,
-    () => fetchMemberByEmail(userEmail!)
+    () => fetchFullMemberByEmail(userEmail!)
   );
   const isAdmin = member?.role === "admin";
 
@@ -292,7 +300,7 @@ export function Header() {
   };
 
   return (
-    <header className="w-full border-b bg-background">
+    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="flex items-center justify-between max-w-6xl mx-auto px-4 py-2 gap-x-4 p-6">
         {/* Left: Logo or Title */}
         <div className="flex items-center gap-2 min-w-0">
@@ -369,9 +377,36 @@ export function Header() {
           {/* User Avatar/Profile (optional) */}
           {user && (
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium truncate max-w-[100px]">
-                {user.email}
-              </span>
+              <DropdownMenu>
+                <DropdownMenuTrigger>
+                  <Avatar>
+                    <AvatarImage
+                      src={member?.avatar}
+                      alt={member?.name || "@user"}
+                    />
+                    <AvatarFallback>
+                      {member?.name?.charAt(0).toUpperCase() || "?"}
+                    </AvatarFallback>
+                  </Avatar>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => (window.location.href = "/profile")}
+                  >
+                    Profile
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={async () => {
+                      await supabase.auth.signOut();
+                      window.location.href = "/";
+                    }}
+                  >
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           )}
         </div>
