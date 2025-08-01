@@ -188,7 +188,7 @@ export default function ReportsPage({
     }
 
     loadData();
-  }, [supabase]);
+  }, [supabase, t.failedToLoadPayments, t.failedToLoadMembers, t.noDataReceived, t.failedToLoadData]);
 
   useEffect(() => {
     async function getUserId() {
@@ -196,14 +196,14 @@ export default function ReportsPage({
       if (data?.user?.id) setUserId(data.user.id);
     }
     getUserId();
-  }, []);
+  }, [supabase.auth]);
   useEffect(() => {
     async function getUserEmail() {
       const { data } = await supabase.auth.getUser();
       if (data?.user?.email) setUserEmail(data.user.email);
     }
     getUserEmail();
-  }, []);
+  }, [supabase.auth]);
   const { data: member, isLoading } = useSWR(
     userEmail ? ["member", userEmail] : null,
     () => fetchMemberByEmail(userEmail!)

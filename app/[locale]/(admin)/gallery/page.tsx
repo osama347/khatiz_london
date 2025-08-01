@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { GalleryGrid } from "@/components/gallery-grid"
 import { GalleryUpload } from "@/components/gallery-upload"
 import { Button } from "@/components/ui/button"
@@ -163,11 +164,11 @@ export default function GalleryPage() {
         <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-md border-b">
           <div className="flex items-center justify-between p-4">
             <h1 className="text-xl font-semibold">Community Gallery</h1>
-            <Button variant="outline" size="sm">
-              <a href="/" className="no-underline">
+            <Link href="/">
+              <Button variant="outline" size="sm">
                 Back to Feed
-              </a>
-            </Button>
+              </Button>
+            </Link>
           </div>
         </div>
 

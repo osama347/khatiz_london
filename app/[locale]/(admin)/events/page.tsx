@@ -122,7 +122,7 @@ export default function EventsPage({
     }
   );
 
-  const events = eventsData?.data || [];
+  const events = useMemo(() => eventsData?.data || [], [eventsData?.data]);
   const totalEvents = eventsData?.count || 0;
   const loading = isValidating && !eventsData;
 
@@ -135,7 +135,7 @@ export default function EventsPage({
         if (res.data)
           setMembers(res.data as { id: string; name: string; email: string }[]);
       });
-  }, []);
+  }, [supabase]);
 
   // Member search effect
   useEffect(() => {
@@ -155,7 +155,7 @@ export default function EventsPage({
             res.data as { id: string; name: string; avatar?: string }[]
           );
       });
-  }, [memberSearch]);
+  }, [memberSearch, supabase]);
 
   // Memoized pagination
   const getCurrentPageItems = useMemo(() => {

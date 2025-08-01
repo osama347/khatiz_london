@@ -401,14 +401,14 @@ export default function PaymentsPage({
       if (data?.user?.id) setUserId(data.user.id);
     }
     getUserId();
-  }, []);
+  }, [supabase.auth]);
   useEffect(() => {
     async function getUserEmail() {
       const { data } = await supabase.auth.getUser();
       if (data?.user?.email) setUserEmail(data.user.email);
     }
     getUserEmail();
-  }, []);
+  }, [supabase.auth]);
   const { data: member, isLoading } = useSWR(
     userEmail ? ["member", userEmail] : null,
     () => fetchMemberByEmail(userEmail!)
@@ -436,7 +436,7 @@ export default function PaymentsPage({
       router.replace("/profile");
     }
   }, [isLoading, member, router]);
-  const payments = paymentsData?.data || [];
+  const payments = useMemo(() => paymentsData?.data || [], [paymentsData?.data]);
   const totalPayments = paymentsData?.count || 0;
   const loading = isValidating && !paymentsData;
   const filteredPayments = useMemo(

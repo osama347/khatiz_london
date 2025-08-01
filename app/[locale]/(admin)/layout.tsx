@@ -23,7 +23,7 @@ export default function AppLayout({
   params,
 }: {
   children: React.ReactNode;
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
   return (
     <div

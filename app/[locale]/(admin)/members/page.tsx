@@ -207,7 +207,7 @@ export default function MembersPage({
     }
   );
 
-  const members = membersData?.data || [];
+  const members = useMemo(() => membersData?.data || [], [membersData?.data]);
   const totalMembers = membersData?.count || 0;
   const loading = isValidating && !membersData;
 
