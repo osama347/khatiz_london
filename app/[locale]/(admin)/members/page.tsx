@@ -2,6 +2,7 @@
 
 import { useEffect, useState, use, useMemo, useCallback, useRef } from "react";
 import Link from "next/link";
+
 import {
   Card,
   CardContent,
@@ -37,7 +38,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, Edit, Trash2, Eye, Users } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  Eye,
+  Users,
+  Shield,
+  ShieldOff,
+} from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/utils/supabase/client";
 import { LoadingSpinner, TableSkeleton } from "@/components/loading";
@@ -62,7 +72,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { cn, debounce, toCamelCase } from "@/lib/utils";
-import { CalendarIcon,ChevronLeft } from "lucide-react";
+import { CalendarIcon, ChevronLeft } from "lucide-react";
 import { getTranslations } from "@/lib/translations";
 import {
   Tooltip,
@@ -71,9 +81,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { fetchMembers } from "@/lib/server/members";
+import {
+  fetchMembers,
+  fetchMemberByEmail,
+  updateMemberRole,
+} from "@/lib/server/members";
 import useSWR from "swr";
-import { fetchMemberByEmail } from "@/lib/server/members";
 import { useRouter } from "next/navigation";
 
 interface Member {
@@ -255,6 +268,22 @@ export default function MembersPage({
     setIsDeleteDialogOpen(true);
   }, []);
 
+  const handleToggleAdmin = useCallback(async (member: Member) => {
+    try {
+      const newRole = member.role === "admin" ? "member" : "admin";
+      await updateMemberRole(member.id, newRole);
+      toast.success(
+        newRole === "admin"
+          ? `${member.name} is now an admin`
+          : `${member.name} is now a regular member`
+      );
+      // SWR will automatically revalidate
+    } catch (error) {
+      console.error("Error updating user role:", error);
+      toast.error("Failed to update member role");
+    }
+  }, []);
+
   const confirmDelete = useCallback(async () => {
     if (!selectedMember) return;
 
@@ -408,6 +437,29 @@ export default function MembersPage({
   }, [formData, selectedMember, translations]);
 
   // Memoized utility components
+  const getRoleBadge = useCallback(
+    (role: string) => {
+      const roleConfig = {
+        admin: {
+          color: "bg-blue-100 text-blue-800",
+          text: translations.admin || "Admin",
+        },
+        member: {
+          color: "bg-purple-100 text-purple-800",
+          text: translations.member || "Member",
+        },
+      };
+
+      const config =
+        roleConfig[role as keyof typeof roleConfig] || roleConfig.member;
+
+      return (
+        <Badge className={cn("text-xs", config.color)}>{config.text}</Badge>
+      );
+    },
+    [translations]
+  );
+
   const getStatusBadge = useCallback(
     (status: string) => {
       const statusConfig = {
@@ -512,7 +564,7 @@ export default function MembersPage({
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col min-h-screen">
       <div className="flex-1 space-y-4 p-4 md:p-8">
         <div className="flex items-center justify-between gap-4 mb-4">
           <Button
@@ -520,725 +572,787 @@ export default function MembersPage({
             size="sm"
             className="md:hidden"
             onClick={() => window.history.back()}
-          >                
-          <ChevronLeft className="h-4 w-4 mr-1" />
-          {translations.back || "Back"}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" />
+            {translations.back || "Back"}
           </Button>
-      </div>
-      <div className="flex-1 space-y-4 p-2 md:p-8">
-  <Card className="mx-2 md:mx-8 mt-6 w-auto p-2 md:p-6">
-          <div className="p-2 md:p-4 pb-0 flex flex-col md:flex-row md:items-center justify-between gap-2">
-  <div className="flex items-center space-x-2 w-full md:w-auto">
-    <div className="relative w-full md:w-[300px] flex items-center">
-      <Input
-        placeholder={translations.searchMembers || "Search members..."}
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        className="w-full pr-8"
-      />
-      <Search className="h-4 w-4 text-muted-foreground absolute right-2" />
-    </div>
-  </div>
-</div>
-          {/* Main content inside Card */}
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              {translations.communityMembers || "Community Members"}
-            </CardTitle>
-            <CardDescription>
-              {translations.manageMembers ||
-                "Manage all community members and their information"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="w-full p-0 m-0">
-            {members.length === 0 ? (
-              <div className="text-center py-8">
-                <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">
-                  {translations.noMembersFound || "No members found"}
-                </h3>
-                <p className="text-muted-foreground">
-                  {translations.getStartedByAdding ||
-                    "Get started by adding your first community member"}
-                </p>
+        </div>
+        <div className="flex-1 space-y-4 p-2 md:p-8">
+          <Card className="mx-2 md:mx-8 mt-6 w-auto p-2 md:p-6">
+            <div className="p-2 md:p-4 pb-0 flex flex-col md:flex-row md:items-center justify-between gap-2">
+              <div className="flex items-center space-x-2 w-full md:w-auto">
+                <div className="relative w-full md:w-[300px] flex items-center">
+                  <Input
+                    placeholder={
+                      translations.searchMembers || "Search members..."
+                    }
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pr-8"
+                  />
+                  <Search className="h-4 w-4 text-muted-foreground absolute right-2" />
+                </div>
               </div>
-            ) : (
-              <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{translations.name || "Name"}</TableHead>
-                      <TableHead>{translations.phone || "Phone"}</TableHead>
-                      <TableHead>{translations.email || "Email"}</TableHead>
-                      <TableHead>
-                        {translations.joiningDate || "Joining Date"}
-                      </TableHead>
-                      <TableHead>{translations.status || "Status"}</TableHead>
-                      <TableHead>{translations.role || "Role"}</TableHead>
-                      <TableHead>
-                        {translations.currentAddress || "Current Address"}
-                      </TableHead>
-                      <TableHead>
-                        {translations.emergencyContact || "Emergency Contact"}
-                      </TableHead>
-                      <TableHead>Family Members</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {getCurrentPageItems.map((member: Member) => {
-                      let familyList: any[] = [];
-                      if (Array.isArray(member.family_members)) {
-                        familyList = member.family_members;
-                      } else if (
-                        typeof member.family_members === "string" &&
-                        member.family_members.trim() !== ""
-                      ) {
-                        try {
-                          familyList = JSON.parse(member.family_members);
-                        } catch {
+            </div>
+            {/* Main content inside Card */}
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                {translations.communityMembers || "Community Members"}
+              </CardTitle>
+              <CardDescription>
+                {translations.manageMembers ||
+                  "Manage all community members and their information"}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="w-full p-0 m-0">
+              {members.length === 0 ? (
+                <div className="text-center py-8">
+                  <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold mb-2">
+                    {translations.noMembersFound || "No members found"}
+                  </h3>
+                  <p className="text-muted-foreground">
+                    {translations.getStartedByAdding ||
+                      "Get started by adding your first community member"}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{translations.name || "Name"}</TableHead>
+                        <TableHead>{translations.phone || "Phone"}</TableHead>
+                        <TableHead>{translations.email || "Email"}</TableHead>
+                        <TableHead>
+                          {translations.joiningDate || "Joining Date"}
+                        </TableHead>
+                        <TableHead>{translations.status || "Status"}</TableHead>
+                        <TableHead>{translations.role || "Role"}</TableHead>
+                        <TableHead>
+                          {translations.currentAddress || "Current Address"}
+                        </TableHead>
+                        <TableHead>
+                          {translations.emergencyContact || "Emergency Contact"}
+                        </TableHead>
+                        <TableHead>Family Members</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {getCurrentPageItems.map((member: Member) => {
+                        let familyList: any[] = [];
+                        if (Array.isArray(member.family_members)) {
+                          familyList = member.family_members;
+                        } else if (
+                          typeof member.family_members === "string" &&
+                          member.family_members.trim() !== ""
+                        ) {
+                          try {
+                            familyList = JSON.parse(member.family_members);
+                          } catch {
+                            familyList = [];
+                          }
+                        } else {
                           familyList = [];
                         }
-                      } else {
-                        familyList = [];
-                      }
-                      return (
-                        <TableRow key={member.id}>
-                          <TableCell className="flex items-center gap-3">
-                            <MemberAvatar
-                              name={member.name}
-                              avatar={member.avatar}
-                            />
-                            <span className="font-medium">
-                              {member.name || "N/A"}
-                            </span>
-                          </TableCell>
-                          <TableCell>{member.phone || "N/A"}</TableCell>
-                          <TableCell>{member.email || "N/A"}</TableCell>
-                          <TableCell>
-                            {format(
-                              toLondonTime(member.join_date),
-                              "MMM d, yyyy"
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {getStatusBadge(member.status || "N/A")}
-                          </TableCell>
-                          <TableCell>{member.role || "N/A"}</TableCell>
-                          <TableCell>
-                            {member.current_address || "N/A"}
-                          </TableCell>
-                          <TableCell>
-                            {member.emergency_contact_number || "N/A"}
-                          </TableCell>
-                          <TableCell>
-                            {familyList.length > 0 ? (
-                              <div className="flex flex-wrap gap-1 items-center">
-                                {familyList.slice(0, 2).map((f, i) => (
-                                  <TooltipProvider key={i} delayDuration={100}>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
+                        return (
+                          <TableRow key={member.id}>
+                            <TableCell className="flex items-center gap-3">
+                              <MemberAvatar
+                                name={member.name}
+                                avatar={member.avatar}
+                              />
+                              <span className="font-medium">
+                                {member.name || "N/A"}
+                              </span>
+                            </TableCell>
+                            <TableCell>{member.phone || "N/A"}</TableCell>
+                            <TableCell>{member.email || "N/A"}</TableCell>
+                            <TableCell>
+                              {format(
+                                toLondonTime(member.join_date),
+                                "MMM d, yyyy"
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {getStatusBadge(member.status || "N/A")}
+                            </TableCell>
+                            <TableCell>
+                              <div className="transition-all duration-200 transform hover:scale-105">
+                                {member.role ? (
+                                  getRoleBadge(member.role)
+                                ) : (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs text-muted-foreground"
+                                  >
+                                    N/A
+                                  </Badge>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {member.current_address || "N/A"}
+                            </TableCell>
+                            <TableCell>
+                              {member.emergency_contact_number || "N/A"}
+                            </TableCell>
+                            <TableCell>
+                              {familyList.length > 0 ? (
+                                <div className="flex flex-wrap gap-1 items-center">
+                                  {familyList.slice(0, 2).map((f, i) => (
+                                    <TooltipProvider
+                                      key={i}
+                                      delayDuration={100}
+                                    >
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span>
+                                            <Badge className="cursor-pointer">
+                                              {f.name}
+                                            </Badge>
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <div className="flex flex-col text-xs">
+                                            {f.relationship && (
+                                              <span>
+                                                Relationship: {f.relationship}
+                                              </span>
+                                            )}
+                                            {f.age !== undefined && (
+                                              <span>Age: {f.age}</span>
+                                            )}
+                                          </div>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  ))}
+                                  {familyList.length > 2 && (
+                                    <Popover>
+                                      <PopoverTrigger asChild>
                                         <span>
-                                          <Badge className="cursor-pointer">
-                                            {f.name}
+                                          <Badge className="cursor-pointer bg-muted text-muted-foreground hover:bg-primary/10">
+                                            +{familyList.length - 2} more
                                           </Badge>
                                         </span>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-64 max-h-60 overflow-y-auto">
+                                        <div className="font-semibold mb-2">
+                                          Family Members
+                                        </div>
+                                        <div className="space-y-2">
+                                          {familyList.map((f, i) => (
+                                            <div
+                                              key={i}
+                                              className="border-b pb-1 last:border-b-0 last:pb-0"
+                                            >
+                                              <div className="font-medium">
+                                                {f.name}
+                                              </div>
+                                              {f.relationship && (
+                                                <div className="text-xs text-muted-foreground">
+                                                  {f.relationship}
+                                                </div>
+                                              )}
+                                              {f.age !== undefined && (
+                                                <div className="text-xs text-muted-foreground">
+                                                  Age: {f.age}
+                                                </div>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </PopoverContent>
+                                    </Popover>
+                                  )}
+                                </div>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="text-muted-foreground bg-muted"
+                                >
+                                  None
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Link
+                                  href={`/${resolvedParams.locale}/member/${member.id}`}
+                                >
+                                  <Button variant="ghost" size="sm">
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </Link>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEditMember(member)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteMember(member)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                                {member.email !== userEmail && (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() =>
+                                            handleToggleAdmin(member)
+                                          }
+                                          className={cn(
+                                            member.role === "admin"
+                                              ? "text-orange-600 hover:text-orange-800"
+                                              : "text-blue-600 hover:text-blue-800"
+                                          )}
+                                        >
+                                          {member.role === "admin" ? (
+                                            <ShieldOff className="h-4 w-4" />
+                                          ) : (
+                                            <Shield className="h-4 w-4" />
+                                          )}
+                                        </Button>
                                       </TooltipTrigger>
                                       <TooltipContent>
-                                        <div className="flex flex-col text-xs">
-                                          {f.relationship && (
-                                            <span>
-                                              Relationship: {f.relationship}
-                                            </span>
-                                          )}
-                                          {f.age !== undefined && (
-                                            <span>Age: {f.age}</span>
-                                          )}
-                                        </div>
+                                        {member.role === "admin"
+                                          ? "Remove Admin Rights"
+                                          : "Make Admin"}
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
-                                ))}
-                                {familyList.length > 2 && (
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <span>
-                                        <Badge className="cursor-pointer bg-muted text-muted-foreground hover:bg-primary/10">
-                                          +{familyList.length - 2} more
-                                        </Badge>
-                                      </span>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-64 max-h-60 overflow-y-auto">
-                                      <div className="font-semibold mb-2">
-                                        Family Members
-                                      </div>
-                                      <div className="space-y-2">
-                                        {familyList.map((f, i) => (
-                                          <div
-                                            key={i}
-                                            className="border-b pb-1 last:border-b-0 last:pb-0"
-                                          >
-                                            <div className="font-medium">
-                                              {f.name}
-                                            </div>
-                                            {f.relationship && (
-                                              <div className="text-xs text-muted-foreground">
-                                                {f.relationship}
-                                              </div>
-                                            )}
-                                            {f.age !== undefined && (
-                                              <div className="text-xs text-muted-foreground">
-                                                Age: {f.age}
-                                              </div>
-                                            )}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </PopoverContent>
-                                  </Popover>
                                 )}
                               </div>
-                            ) : (
-                              <Badge
-                                variant="outline"
-                                className="text-muted-foreground bg-muted"
-                              >
-                                None
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <Link
-                                href={`/${resolvedParams.locale}/member/${member.id}`}
-                              >
-                                <Button variant="ghost" size="sm">
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                              </Link>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleEditMember(member)}
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDeleteMember(member)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
 
-                {/* Pagination */}
-                <div className="flex items-center justify-between space-x-2 py-4">
-                  <div className="text-sm text-muted-foreground">
-                    {translations.showing || "Showing"}{" "}
-                    {Math.min((currentPage - 1) * pageSize + 1, members.length)}{" "}
-                    {translations.to || "to"}{" "}
-                    {Math.min(currentPage * pageSize, members.length)}{" "}
-                    {translations.of || "of"} {members.length}{" "}
-                    {translations.entries || "entries"}
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(1)}
-                      disabled={currentPage === 1}
-                    >
-                      {translations.first || "First"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(currentPage - 1)}
-                      disabled={currentPage === 1}
-                    >
-                      {translations.previous || "Previous"}
-                    </Button>
-                    {getPageNumbers.map((page, index) => (
+                  {/* Pagination */}
+                  <div className="flex items-center justify-between space-x-2 py-4">
+                    <div className="text-sm text-muted-foreground">
+                      {translations.showing || "Showing"}{" "}
+                      {Math.min(
+                        (currentPage - 1) * pageSize + 1,
+                        members.length
+                      )}{" "}
+                      {translations.to || "to"}{" "}
+                      {Math.min(currentPage * pageSize, members.length)}{" "}
+                      {translations.of || "of"} {members.length}{" "}
+                      {translations.entries || "entries"}
+                    </div>
+                    <div className="flex items-center space-x-2">
                       <Button
-                        key={index}
-                        variant={page === currentPage ? "default" : "outline"}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(1)}
+                        disabled={currentPage === 1}
+                      >
+                        {translations.first || "First"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage === 1}
+                      >
+                        {translations.previous || "Previous"}
+                      </Button>
+                      {getPageNumbers.map((page, index) => (
+                        <Button
+                          key={index}
+                          variant={page === currentPage ? "default" : "outline"}
+                          size="sm"
+                          onClick={() =>
+                            typeof page === "number" && handlePageChange(page)
+                          }
+                          disabled={page === "..."}
+                        >
+                          {page}
+                        </Button>
+                      ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={
+                          currentPage === Math.ceil(members.length / pageSize)
+                        }
+                      >
+                        {translations.next || "Next"}
+                      </Button>
+                      <Button
+                        variant="outline"
                         size="sm"
                         onClick={() =>
-                          typeof page === "number" && handlePageChange(page)
+                          handlePageChange(Math.ceil(members.length / pageSize))
                         }
-                        disabled={page === "..."}
+                        disabled={
+                          currentPage === Math.ceil(members.length / pageSize)
+                        }
                       >
-                        {page}
+                        {translations.last || "Last"}
                       </Button>
-                    ))}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(currentPage + 1)}
-                      disabled={
-                        currentPage === Math.ceil(members.length / pageSize)
-                      }
-                    >
-                      {translations.next || "Next"}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        handlePageChange(Math.ceil(members.length / pageSize))
-                      }
-                      disabled={
-                        currentPage === Math.ceil(members.length / pageSize)
-                      }
-                    >
-                      {translations.last || "Last"}
-                    </Button>
+                    </div>
                   </div>
-                </div>
-              </>
-            )}
-          </CardContent>
+                </>
+              )}
+            </CardContent>
 
-          {/* Edit Dialog */}
-          <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-            <DialogContent className="max-w-full w-full">
-              <DialogHeader>
-                <DialogTitle>
-                  {translations.editMember || "Edit Member"}
-                </DialogTitle>
-                <DialogDescription>
-                  {translations.updateMemberInfo ||
-                    "Update the member's information."}
-                </DialogDescription>
-              </DialogHeader>
-              <Tabs defaultValue="personal" className="w-full">
-                <TabsList className="mb-4">
-                  <TabsTrigger value="personal">Personal</TabsTrigger>
-                  <TabsTrigger value="address">Address</TabsTrigger>
-                  <TabsTrigger value="emergency">Emergency</TabsTrigger>
-                  <TabsTrigger value="family">Family</TabsTrigger>
-                </TabsList>
-                <TabsContent value="personal">
-                  {/* Personal Info Group */}
-                  <div className="border rounded-lg bg-muted/50 p-2">
-                    <div className="font-semibold text-base mb-1">
-                      Personal Information
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
-                      <div className="flex flex-col gap-1">
-                        <Label htmlFor="edit-avatar">Profile Picture</Label>
-                        <ImageUpload
-                          value={formData.avatar || ""}
-                          onChange={(value) =>
-                            setFormData({ ...formData, avatar: value })
-                          }
-                        />
+            {/* Edit Dialog */}
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+              <DialogContent className="max-w-full w-full">
+                <DialogHeader>
+                  <DialogTitle>
+                    {translations.editMember || "Edit Member"}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {translations.updateMemberInfo ||
+                      "Update the member's information."}
+                  </DialogDescription>
+                </DialogHeader>
+                <Tabs defaultValue="personal" className="w-full">
+                  <TabsList className="mb-4">
+                    <TabsTrigger value="personal">Personal</TabsTrigger>
+                    <TabsTrigger value="address">Address</TabsTrigger>
+                    <TabsTrigger value="emergency">Emergency</TabsTrigger>
+                    <TabsTrigger value="family">Family</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="personal">
+                    {/* Personal Info Group */}
+                    <div className="border rounded-lg bg-muted/50 p-2">
+                      <div className="font-semibold text-base mb-1">
+                        Personal Information
                       </div>
-                      <div className="flex flex-col gap-1">
-                        <Label htmlFor="edit-name">Name</Label>
-                        <Input
-                          id="edit-name"
-                          value={formData.name}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              name: toCamelCase(e.target.value),
-                            })
-                          }
-                          placeholder="Enter full name"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <Label htmlFor="edit-email">Email</Label>
-                        <Input
-                          id="edit-email"
-                          type="email"
-                          value={formData.email}
-                          onChange={(e) =>
-                            setFormData({ ...formData, email: e.target.value })
-                          }
-                          placeholder="Enter email address"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <Label htmlFor="edit-phone">Phone</Label>
-                        <Input
-                          id="edit-phone"
-                          value={formData.phone}
-                          onChange={(e) =>
-                            setFormData({ ...formData, phone: e.target.value })
-                          }
-                          placeholder="Enter phone number"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <Label htmlFor="edit-date_of_birth">
-                          Date of Birth
-                        </Label>
-                        <Input
-                          id="edit-date_of_birth"
-                          type="date"
-                          value={formData.date_of_birth}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              date_of_birth: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <Label htmlFor="edit-status">Status</Label>
-                        <Select
-                          value={formData.status}
-                          onValueChange={(value) =>
-                            setFormData({
-                              ...formData,
-                              status: value as
-                                | "Active"
-                                | "Inactive"
-                                | "Suspended",
-                            })
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Active">Active</SelectItem>
-                            <SelectItem value="Inactive">Inactive</SelectItem>
-                            <SelectItem value="Suspended">Suspended</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-                </TabsContent>
-                <TabsContent value="address">
-                  {/* Address Group */}
-                  <div className="border rounded-lg bg-muted/50 p-2">
-                    <div className="font-semibold text-base mb-1">
-                      Address Information
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
-                      <div className="flex flex-col gap-1">
-                        <Label htmlFor="edit-current_address">
-                          Current Address
-                        </Label>
-                        <Input
-                          id="edit-current_address"
-                          value={formData.current_address}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              current_address: e.target.value,
-                            })
-                          }
-                          placeholder="Enter current address"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <Label htmlFor="edit-back_home_address">
-                          Back Home Address
-                        </Label>
-                        <Input
-                          id="edit-back_home_address"
-                          value={formData.back_home_address}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              back_home_address: e.target.value,
-                            })
-                          }
-                          placeholder="Enter back home address"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </TabsContent>
-                <TabsContent value="emergency">
-                  {/* Emergency Contact Group */}
-                  <div className="border rounded-lg bg-muted/50 p-2">
-                    <div className="font-semibold text-base mb-1">
-                      Emergency Contact
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
-                      <div className="flex flex-col gap-1">
-                        <Label htmlFor="edit-emergency_contact_number">
-                          Emergency Contact Number
-                        </Label>
-                        <Input
-                          id="edit-emergency_contact_number"
-                          value={formData.emergency_contact_number}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              emergency_contact_number: e.target.value,
-                            })
-                          }
-                          placeholder="Enter emergency contact number"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <Label htmlFor="edit-role">Role</Label>
-                        <Input
-                          id="edit-role"
-                          value={formData.role}
-                          onChange={(e) =>
-                            setFormData({ ...formData, role: e.target.value })
-                          }
-                          placeholder="Enter role (admin/user)"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </TabsContent>
-                <TabsContent value="family">
-                  {/* Family Members Group */}
-                  <div className="border rounded-lg bg-muted/50 p-2">
-                    <div className="font-semibold text-base mb-1">
-                      Family Members
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      {/* Stylish entry form */}
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        <Input
-                          placeholder="Name"
-                          value={familyMemberEntry.name}
-                          onChange={(e) =>
-                            setFamilyMemberEntry((f) => ({
-                              ...f,
-                              name: e.target.value,
-                            }))
-                          }
-                          className="w-[120px]"
-                        />
-                        <Input
-                          placeholder="Relationship"
-                          value={familyMemberEntry.relationship}
-                          onChange={(e) =>
-                            setFamilyMemberEntry((f) => ({
-                              ...f,
-                              relationship: e.target.value,
-                            }))
-                          }
-                          className="w-[120px]"
-                        />
-                        <Input
-                          placeholder="Age"
-                          type="number"
-                          min={0}
-                          value={familyMemberEntry.age}
-                          onChange={(e) =>
-                            setFamilyMemberEntry((f) => ({
-                              ...f,
-                              age: e.target.value,
-                            }))
-                          }
-                          className="w-[80px]"
-                        />
-                        <Button
-                          type="button"
-                          onClick={handleAddFamilyMember}
-                          className="h-9"
-                        >
-                          Add
-                        </Button>
-                      </div>
-                      {/* Display current family members as chips/cards */}
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        {parsedFamilyMembers.map((member: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className="flex items-center bg-white border rounded-full px-3 py-1 shadow-sm text-sm"
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
+                        <div className="flex flex-col gap-1">
+                          <Label htmlFor="edit-avatar">Profile Picture</Label>
+                          <ImageUpload
+                            value={formData.avatar || ""}
+                            onChange={(value) =>
+                              setFormData({ ...formData, avatar: value })
+                            }
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <Label htmlFor="edit-name">Name</Label>
+                          <Input
+                            id="edit-name"
+                            value={formData.name}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                name: toCamelCase(e.target.value),
+                              })
+                            }
+                            placeholder="Enter full name"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <Label htmlFor="edit-email">Email</Label>
+                          <Input
+                            id="edit-email"
+                            type="email"
+                            value={formData.email}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                email: e.target.value,
+                              })
+                            }
+                            placeholder="Enter email address"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <Label htmlFor="edit-phone">Phone</Label>
+                          <Input
+                            id="edit-phone"
+                            value={formData.phone}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                phone: e.target.value,
+                              })
+                            }
+                            placeholder="Enter phone number"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <Label htmlFor="edit-date_of_birth">
+                            Date of Birth
+                          </Label>
+                          <Input
+                            id="edit-date_of_birth"
+                            type="date"
+                            value={formData.date_of_birth}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                date_of_birth: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <Label htmlFor="edit-status">Status</Label>
+                          <Select
+                            value={formData.status}
+                            onValueChange={(value) =>
+                              setFormData({
+                                ...formData,
+                                status: value as
+                                  | "Active"
+                                  | "Inactive"
+                                  | "Suspended",
+                              })
+                            }
                           >
-                            <span className="mr-2 font-medium">
-                              {member.name}
-                            </span>
-                            <span className="mr-2 text-muted-foreground">
-                              {member.relationship}
-                            </span>
-                            <span className="mr-2 text-muted-foreground">
-                              {member.age}
-                            </span>
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="ghost"
-                              className="h-5 w-5 p-0 ml-1"
-                              onClick={() => handleRemoveFamilyMember(idx)}
-                            >
-                              ×
-                            </Button>
-                          </div>
-                        ))}
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Active">Active</SelectItem>
+                              <SelectItem value="Inactive">Inactive</SelectItem>
+                              <SelectItem value="Suspended">
+                                Suspended
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="edit-family_members">
-                          Family Members (JSON)
-                          {formData.family_members && (
-                            <span
-                              className={`ml-2 text-xs ${
-                                isFamilyMembersJsonValid
-                                  ? "text-green-600"
-                                  : "text-red-600"
-                              }`}
-                            >
-                              {isFamilyMembersJsonValid
-                                ? "✓ Valid JSON"
-                                : "✗ Invalid JSON"}
-                              {isFamilyMembersJsonValid &&
-                                parsedFamilyMembers.length > 0 && (
-                                  <span className="ml-1 text-blue-600">
-                                    ({parsedFamilyMembers.length} member
-                                    {parsedFamilyMembers.length !== 1
-                                      ? "s"
-                                      : ""}
-                                    )
-                                  </span>
-                                )}
-                            </span>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="address">
+                    {/* Address Group */}
+                    <div className="border rounded-lg bg-muted/50 p-2">
+                      <div className="font-semibold text-base mb-1">
+                        Address Information
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
+                        <div className="flex flex-col gap-1">
+                          <Label htmlFor="edit-current_address">
+                            Current Address
+                          </Label>
+                          <Input
+                            id="edit-current_address"
+                            value={formData.current_address}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                current_address: e.target.value,
+                              })
+                            }
+                            placeholder="Enter current address"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <Label htmlFor="edit-back_home_address">
+                            Back Home Address
+                          </Label>
+                          <Input
+                            id="edit-back_home_address"
+                            value={formData.back_home_address}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                back_home_address: e.target.value,
+                              })
+                            }
+                            placeholder="Enter back home address"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="emergency">
+                    {/* Emergency Contact Group */}
+                    <div className="border rounded-lg bg-muted/50 p-2">
+                      <div className="font-semibold text-base mb-1">
+                        Emergency Contact
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1">
+                        <div className="flex flex-col gap-1">
+                          <Label htmlFor="edit-emergency_contact_number">
+                            Emergency Contact Number
+                          </Label>
+                          <Input
+                            id="edit-emergency_contact_number"
+                            value={formData.emergency_contact_number}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                emergency_contact_number: e.target.value,
+                              })
+                            }
+                            placeholder="Enter emergency contact number"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <Label htmlFor="edit-role">Role</Label>
+                          <Input
+                            id="edit-role"
+                            value={formData.role}
+                            onChange={(e) =>
+                              setFormData({ ...formData, role: e.target.value })
+                            }
+                            placeholder="Enter role (admin/member)"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="family">
+                    {/* Family Members Group */}
+                    <div className="border rounded-lg bg-muted/50 p-2">
+                      <div className="font-semibold text-base mb-1">
+                        Family Members
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {/* Stylish entry form */}
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          <Input
+                            placeholder="Name"
+                            value={familyMemberEntry.name}
+                            onChange={(e) =>
+                              setFamilyMemberEntry((f) => ({
+                                ...f,
+                                name: e.target.value,
+                              }))
+                            }
+                            className="w-[120px]"
+                          />
+                          <Input
+                            placeholder="Relationship"
+                            value={familyMemberEntry.relationship}
+                            onChange={(e) =>
+                              setFamilyMemberEntry((f) => ({
+                                ...f,
+                                relationship: e.target.value,
+                              }))
+                            }
+                            className="w-[120px]"
+                          />
+                          <Input
+                            placeholder="Age"
+                            type="number"
+                            min={0}
+                            value={familyMemberEntry.age}
+                            onChange={(e) =>
+                              setFamilyMemberEntry((f) => ({
+                                ...f,
+                                age: e.target.value,
+                              }))
+                            }
+                            className="w-[80px]"
+                          />
+                          <Button
+                            type="button"
+                            onClick={handleAddFamilyMember}
+                            className="h-9"
+                          >
+                            Add
+                          </Button>
+                        </div>
+                        {/* Display current family members as chips/cards */}
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {parsedFamilyMembers.map(
+                            (member: any, idx: number) => (
+                              <div
+                                key={idx}
+                                className="flex items-center bg-white border rounded-full px-3 py-1 shadow-sm text-sm"
+                              >
+                                <span className="mr-2 font-medium">
+                                  {member.name}
+                                </span>
+                                <span className="mr-2 text-muted-foreground">
+                                  {member.relationship}
+                                </span>
+                                <span className="mr-2 text-muted-foreground">
+                                  {member.age}
+                                </span>
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-5 w-5 p-0 ml-1"
+                                  onClick={() => handleRemoveFamilyMember(idx)}
+                                >
+                                  ×
+                                </Button>
+                              </div>
+                            )
                           )}
-                        </Label>
-                        {formData.family_members && (
-                          <div className="flex gap-1">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                try {
-                                  const parsed = JSON.parse(
-                                    formData.family_members
-                                  );
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="edit-family_members">
+                            Family Members (JSON)
+                            {formData.family_members && (
+                              <span
+                                className={`ml-2 text-xs ${
+                                  isFamilyMembersJsonValid
+                                    ? "text-green-600"
+                                    : "text-red-600"
+                                }`}
+                              >
+                                {isFamilyMembersJsonValid
+                                  ? "✓ Valid JSON"
+                                  : "✗ Invalid JSON"}
+                                {isFamilyMembersJsonValid &&
+                                  parsedFamilyMembers.length > 0 && (
+                                    <span className="ml-1 text-blue-600">
+                                      ({parsedFamilyMembers.length} member
+                                      {parsedFamilyMembers.length !== 1
+                                        ? "s"
+                                        : ""}
+                                      )
+                                    </span>
+                                  )}
+                              </span>
+                            )}
+                          </Label>
+                          {formData.family_members && (
+                            <div className="flex gap-1">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  try {
+                                    const parsed = JSON.parse(
+                                      formData.family_members
+                                    );
+                                    setFormData({
+                                      ...formData,
+                                      family_members: JSON.stringify(
+                                        parsed,
+                                        null,
+                                        2
+                                      ),
+                                    });
+                                  } catch (e) {
+                                    toast.error("Invalid JSON format");
+                                  }
+                                }}
+                                className="h-6 text-xs"
+                              >
+                                Format JSON
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
                                   setFormData({
                                     ...formData,
-                                    family_members: JSON.stringify(
-                                      parsed,
-                                      null,
-                                      2
-                                    ),
+                                    family_members: "",
                                   });
-                                } catch (e) {
-                                  toast.error("Invalid JSON format");
-                                }
-                              }}
-                              className="h-6 text-xs"
-                            >
-                              Format JSON
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setFormData({
-                                  ...formData,
-                                  family_members: "",
-                                });
-                              }}
-                              className="h-6 text-xs"
-                            >
-                              Clear
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                      <textarea
-                        id="edit-family_members"
-                        value={formData.family_members}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            family_members: e.target.value,
-                          })
-                        }
-                        className={`border rounded p-2 min-h-[120px] font-mono text-sm ${
-                          formData.family_members && !isFamilyMembersJsonValid
-                            ? "border-red-500 bg-red-50"
-                            : "border-gray-300"
-                        }`}
-                        rows={8}
-                        placeholder='[{"name": "John Doe", "relationship": "Brother", "age": 25}, {"name": "Jane Doe", "relationship": "Sister", "age": 23}]'
-                      />
-                      <span className="text-xs text-muted-foreground">
-                        Enter family members as a JSON array. You can also use
-                        the form above to add/remove members.
-                        {!isFamilyMembersJsonValid &&
-                          formData.family_members && (
-                            <span className="text-red-600 block mt-1">
-                              Please fix the JSON format to continue.
-                            </span>
+                                }}
+                                className="h-6 text-xs"
+                              >
+                                Clear
+                              </Button>
+                            </div>
                           )}
-                      </span>
+                        </div>
+                        <textarea
+                          id="edit-family_members"
+                          value={formData.family_members}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              family_members: e.target.value,
+                            })
+                          }
+                          className={`border rounded p-2 min-h-[120px] font-mono text-sm ${
+                            formData.family_members && !isFamilyMembersJsonValid
+                              ? "border-red-500 bg-red-50"
+                              : "border-gray-300"
+                          }`}
+                          rows={8}
+                          placeholder='[{"name": "John Doe", "relationship": "Brother", "age": 25}, {"name": "Jane Doe", "relationship": "Sister", "age": 23}]'
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          Enter family members as a JSON array. You can also use
+                          the form above to add/remove members.
+                          {!isFamilyMembersJsonValid &&
+                            formData.family_members && (
+                              <span className="text-red-600 block mt-1">
+                                Please fix the JSON format to continue.
+                              </span>
+                            )}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </TabsContent>
-              </Tabs>
-              <DialogFooter>
-                <Button
-                  onClick={handleUpdateMember}
-                  disabled={isUpdating || !isFamilyMembersJsonValid}
-                >
-                  {isUpdating ? (
-                    <>
-                      <span className="animate-spin mr-2 inline-block align-middle">
-                        ⏳
-                      </span>
-                      {translations.updatingMember || "Updating..."}
-                    </>
-                  ) : (
-                    translations.updateMember || "Update Member"
+                  </TabsContent>
+                </Tabs>
+                <DialogFooter>
+                  <Button
+                    onClick={handleUpdateMember}
+                    disabled={isUpdating || !isFamilyMembersJsonValid}
+                  >
+                    {isUpdating ? (
+                      <>
+                        <span className="animate-spin mr-2 inline-block align-middle">
+                          ⏳
+                        </span>
+                        {translations.updatingMember || "Updating..."}
+                      </>
+                    ) : (
+                      translations.updateMember || "Update Member"
+                    )}
+                  </Button>
+                  {!isFamilyMembersJsonValid && (
+                    <span className="text-xs text-red-500 ml-2">
+                      Invalid family members JSON
+                    </span>
                   )}
-                </Button>
-                {!isFamilyMembersJsonValid && (
-                  <span className="text-xs text-red-500 ml-2">
-                    Invalid family members JSON
-                  </span>
-                )}
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
-          {/* Delete Confirmation Dialog */}
-          <AlertDialog
-            open={isDeleteDialogOpen}
-            onOpenChange={setIsDeleteDialogOpen}
-          >
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  {translations.areYouSure || "Are you sure?"}
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  {translations.deleteWarning ||
-                    "This action cannot be undone. This will permanently delete the member"}
-                  {selectedMember?.name && ` "${selectedMember.name}"`}
-                  {translations.andRemoveData ||
-                    " and remove their data from our servers."}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>
-                  {translations.cancel || "Cancel"}
-                </AlertDialogCancel>
-                <AlertDialogAction onClick={confirmDelete}>
-                  {translations.deleting || "Deleting..."}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </Card>
+            {/* Delete Confirmation Dialog */}
+            <AlertDialog
+              open={isDeleteDialogOpen}
+              onOpenChange={setIsDeleteDialogOpen}
+            >
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    {translations.areYouSure || "Are you sure?"}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    {translations.deleteWarning ||
+                      "This action cannot be undone. This will permanently delete the member"}
+                    {selectedMember?.name && ` "${selectedMember.name}"`}
+                    {translations.andRemoveData ||
+                      " and remove their data from our servers."}
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>
+                    {translations.cancel || "Cancel"}
+                  </AlertDialogCancel>
+                  <AlertDialogAction onClick={confirmDelete}>
+                    {translations.deleting || "Deleting..."}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </Card>
+        </div>
       </div>
-      </div>
-      </div>
+    </div>
   );
 }

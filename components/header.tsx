@@ -306,6 +306,46 @@ export function Header() {
         <div className="flex items-center gap-2 min-w-0">
           <span className="font-bold text-lg truncate">Community Portal</span>
         </div>
+        {/* Admin Navigation - Hidden on Mobile */}
+        {isAdmin && (
+          <nav className="hidden md:flex items-center space-x-6 ml-8">
+            <Button
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => window.location.href = "/"}
+            >
+              Home
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => window.location.href = "/members"}
+            >
+              Members
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => window.location.href = "/payments"}
+            >
+              Payments
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => window.location.href = "/events"}
+            >
+              Events
+            </Button>
+            <Button
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => window.location.href = "/reports"}
+            >
+              Reports
+            </Button>
+          </nav>
+        )}
         {/* Right: Language Switcher, Notifications, User */}
         <div className="flex items-center gap-4 min-w-0">
           <LanguageSwitcher />

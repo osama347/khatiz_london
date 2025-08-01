@@ -59,3 +59,14 @@ export async function updateMemberById(id: string, updates: Partial<any>) {
   if (error) throw error;
   return data;
 }
+
+export async function updateMemberRole(id: string, role: string) {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from("members")
+    .update({ role })
+    .eq("id", id)
+    .single();
+  if (error) throw error;
+  return data;
+}
