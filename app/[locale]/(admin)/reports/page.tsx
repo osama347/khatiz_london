@@ -133,6 +133,9 @@ export default function ReportsPage({
   );
 
   useEffect(() => {
+    // Only run if translations are loaded
+    if (!t) return;
+
     async function loadData() {
       try {
         setLoading(true);
@@ -149,8 +152,8 @@ export default function ReportsPage({
           .order("paid_on", { ascending: false });
 
         if (paymentsError) {
-          console.error("Payments error:", paymentsError);
-          toast.error(`${t.failedToLoadPayments}: ${paymentsError.message}`);
+          console.error("Error fetching payments:", paymentsError);
+          toast.error(t?.failedToLoadPayments || "Failed to load payments");
           return;
         }
 
@@ -161,13 +164,13 @@ export default function ReportsPage({
           .order("join_date", { ascending: false });
 
         if (membersError) {
-          console.error("Members error:", membersError);
-          toast.error(`${t.failedToLoadMembers}: ${membersError.message}`);
+          console.error("Error fetching members:", membersError);
+          toast.error(t?.failedToLoadMembers || "Failed to load members");
           return;
         }
 
         if (!paymentsData || !membersData) {
-          toast.error(t.noDataReceived);
+          toast.error(t?.noDataReceived || "No data received");
           return;
         }
 
@@ -180,7 +183,9 @@ export default function ReportsPage({
       } catch (error) {
         console.error("Error loading data:", error);
         toast.error(
-          error instanceof Error ? error.message : t.failedToLoadData
+          error instanceof Error
+            ? error.message
+            : (t?.failedToLoadData || "Failed to load data")
         );
       } finally {
         setLoading(false);
@@ -188,7 +193,7 @@ export default function ReportsPage({
     }
 
     loadData();
-  }, [supabase, t.failedToLoadPayments, t.failedToLoadMembers, t.noDataReceived, t.failedToLoadData]);
+  }, [supabase, t]);
 
   useEffect(() => {
     async function getUserId() {
@@ -357,155 +362,220 @@ export default function ReportsPage({
       case "overview":
         return (
           <>
-            <div className="flex-1 space-y-3 sm:space-y-4 p-3 sm:p-4 md:p-8">
-              <div className="flex items-center justify-between gap-2 sm:gap-4 mb-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="md:hidden"
-                  onClick={() => window.history.back()}
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  {t?.back || "Back"}
-                </Button>
-              </div>
-              <Card>
+            {/* Stats Cards Grid - Responsive for desktop */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+              <Card className="hover:shadow-md transition-shadow">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
                     {t.totalRevenue}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">
+                  <div className="text-2xl lg:text-3xl font-bold">
                     {new Intl.NumberFormat("en-US", {
                       style: "currency",
                       currency: "USD",
                     }).format(totalRevenue)}
                   </div>
-                  <p className="text-xs text-muted-foreground">{t.allTime}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{t.allTime}</p>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="hover:shadow-md transition-shadow">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
                     {t.averagePayment}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">
+                  <div className="text-2xl lg:text-3xl font-bold">
                     {new Intl.NumberFormat("en-US", {
                       style: "currency",
                       currency: "USD",
                     }).format(averagePayment)}
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground mt-1">
                     {t.perPayment}
                   </p>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="hover:shadow-md transition-shadow">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
                     {t.activeMembers}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{activeMembers}</div>
-                  <p className="text-xs text-muted-foreground">
+                  <div className="text-2xl lg:text-3xl font-bold text-green-600">{activeMembers}</div>
+                  <p className="text-xs text-muted-foreground mt-1">
                     {t.currentActiveMembers}
                   </p>
                 </CardContent>
               </Card>
 
-              <Card>
+              <Card className="hover:shadow-md transition-shadow">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
                     {t.totalMembers}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{members.length}</div>
-                  <p className="text-xs text-muted-foreground">{t.allTime}</p>
+                  <div className="text-2xl lg:text-3xl font-bold">{members.length}</div>
+                  <p className="text-xs text-muted-foreground mt-1">{t.allTime}</p>
                 </CardContent>
               </Card>
             </div>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader className="p-4 sm:p-6">
-                    <CardTitle className="text-base sm:text-lg">
-                      {t.paymentTrends}
-                    </CardTitle>
-                    <CardDescription className="text-xs sm:text-sm">
-                      {t.paymentAmountsOverTime}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="p-2 sm:p-6">
-                    <div className="h-[250px] sm:h-[300px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={paymentTrends}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="date" />
-                          <YAxis />
-                          <Tooltip
-                            formatter={(value: number) =>
-                              new Intl.NumberFormat("en-US", {
-                                style: "currency",
-                                currency: "USD",
-                              }).format(value)
-                            }
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="amount"
-                            stroke="#8884d8"
-                            strokeWidth={2}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </CardContent>
-                </Card>
+            {/* Charts Section - Improved Desktop Layout */}
+            <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+              {/* Payment Trends Chart - Takes more space on desktop */}
+              <Card className="lg:col-span-2 xl:col-span-2">
+                <CardHeader className="p-4 sm:p-6">
+                  <CardTitle className="text-lg lg:text-xl">
+                    {t.paymentTrends}
+                  </CardTitle>
+                  <CardDescription className="text-sm">
+                    {t.paymentAmountsOverTime}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 sm:p-6">
+                  <div className="h-[300px] lg:h-[400px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={paymentTrends}>
+                        <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                        <XAxis 
+                          dataKey="date" 
+                          tick={{ fontSize: 12 }}
+                          className="text-muted-foreground"
+                        />
+                        <YAxis 
+                          tick={{ fontSize: 12 }}
+                          className="text-muted-foreground"
+                        />
+                        <Tooltip
+                          formatter={(value: number) =>
+                            new Intl.NumberFormat("en-US", {
+                              style: "currency",
+                              currency: "USD",
+                            }).format(value)
+                          }
+                          contentStyle={{
+                            backgroundColor: 'hsl(var(--background))',
+                            border: '1px solid hsl(var(--border))',
+                            borderRadius: '6px'
+                          }}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="amount"
+                          stroke="#3b82f6"
+                          strokeWidth={3}
+                          dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
+                          activeDot={{ r: 6, stroke: '#3b82f6', strokeWidth: 2 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle>{t.memberStatusDistribution}</CardTitle>
-                    <CardDescription>
-                      {t.currentMemberStatusBreakdown}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-[300px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={memberStatusData}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={({ name, percent }) =>
-                              `${name} ${(percent * 100).toFixed(0)}%`
-                            }
-                            outerRadius={80}
-                            fill="#8884d8"
-                            dataKey="value"
-                          >
-                            {memberStatusData.map((entry, index) => (
-                              <Cell
-                                key={`cell-${index}`}
-                                fill={COLORS[index % COLORS.length]}
-                              />
-                            ))}
-                          </Pie>
-                          <Tooltip />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+              {/* Member Status Distribution - Compact on desktop */}
+              <Card className="lg:col-span-1 xl:col-span-1">
+                <CardHeader className="p-4 sm:p-6">
+                  <CardTitle className="text-lg">{t.memberStatusDistribution}</CardTitle>
+                  <CardDescription className="text-sm">
+                    {t.currentMemberStatusBreakdown}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 sm:p-6">
+                  <div className="h-[300px] lg:h-[400px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={memberStatusData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, percent }) =>
+                            `${name} ${(percent * 100).toFixed(0)}%`
+                          }
+                          outerRadius={"80%"}
+                          fill="#8884d8"
+                          dataKey="value"
+                        >
+                          {memberStatusData.map((entry, index) => (
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={COLORS[index % COLORS.length]}
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip 
+                          contentStyle={{
+                            backgroundColor: 'hsl(var(--background))',
+                            border: '1px solid hsl(var(--border))',
+                            borderRadius: '6px'
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Top Paying Members - New section for desktop */}
+              <Card className="lg:col-span-2 xl:col-span-3">
+                <CardHeader className="p-4 sm:p-6">
+                  <CardTitle className="text-lg">{t?.topPayingMembers || "Top Paying Members"}</CardTitle>
+                  <CardDescription className="text-sm">
+                    {t?.topMembersDescription || "Members with highest total payments"}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-4 sm:p-6">
+                  <div className="h-[250px] lg:h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={topPayingMembers} layout="horizontal">
+                        <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                        <XAxis 
+                          type="number" 
+                          tick={{ fontSize: 12 }}
+                          tickFormatter={(value) => 
+                            new Intl.NumberFormat("en-US", {
+                              style: "currency",
+                              currency: "USD",
+                              notation: "compact"
+                            }).format(value)
+                          }
+                        />
+                        <YAxis 
+                          type="category" 
+                          dataKey="name" 
+                          tick={{ fontSize: 12 }}
+                          width={120}
+                        />
+                        <Tooltip
+                          formatter={(value: number) =>
+                            new Intl.NumberFormat("en-US", {
+                              style: "currency",
+                              currency: "USD",
+                            }).format(value)
+                          }
+                          contentStyle={{
+                            backgroundColor: 'hsl(var(--background))',
+                            border: '1px solid hsl(var(--border))',
+                            borderRadius: '6px'
+                          }}
+                        />
+                        <Bar 
+                          dataKey="amount" 
+                          fill="#10b981" 
+                          radius={[0, 4, 4, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </>
         );
@@ -859,8 +929,8 @@ export default function ReportsPage({
 
   if (loading) {
     return (
-      <div className="flex flex-col">
-        <div className="flex-1 space-y-4 p-4 md:p-8">
+      <div className="flex flex-col min-h-screen bg-background">
+        <div className="flex-1 space-y-6 p-4 md:p-6 lg:p-8 xl:p-10 max-w-7xl mx-auto w-full">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {[1, 2, 3, 4].map((i) => (
               <Card key={i}>
@@ -876,14 +946,14 @@ export default function ReportsPage({
             ))}
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
+          <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+            <Card className="lg:col-span-2 xl:col-span-2">
               <CardHeader>
                 <Skeleton className="h-6 w-48" />
                 <Skeleton className="h-4 w-72" />
               </CardHeader>
               <CardContent>
-                <Skeleton className="h-[300px] w-full" />
+                <Skeleton className="h-[400px] w-full" />
               </CardContent>
             </Card>
 
@@ -893,7 +963,7 @@ export default function ReportsPage({
                 <Skeleton className="h-4 w-72" />
               </CardHeader>
               <CardContent>
-                <Skeleton className="h-[300px] w-full" />
+                <Skeleton className="h-[400px] w-full" />
               </CardContent>
             </Card>
           </div>
@@ -905,73 +975,96 @@ export default function ReportsPage({
   return isLoading ||
     !userEmail ||
     (member && member.role !== "admin") ? null : (
-    <div className="flex flex-col">
+    <div className="flex flex-col min-h-screen bg-background">
       <div
-        className="flex-1 space-y-4 p-4 md:p-8"
+        className="flex-1 space-y-6 p-4 md:p-6 lg:p-8 xl:p-10 max-w-7xl mx-auto w-full"
         ref={reportRef}
         id="report-content"
       >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:space-x-4">
-            <Select
-              value={selectedReport}
-              onValueChange={(value: ReportType) => setSelectedReport(value)}
-            >
-              <SelectTrigger className="w-full sm:w-[200px]">
-                <SelectValue placeholder={t.selectReportType} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="overview">{t.overviewDashboard}</SelectItem>
-                <SelectItem value="monthly">{t.monthlyReport}</SelectItem>
-                <SelectItem value="member">{t.memberReport}</SelectItem>
-                <SelectItem value="payment">
-                  {t.paymentDetailsReport}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={timeRange}
-              onValueChange={(value) =>
-                setTimeRange(value as "week" | "month" | "year")
-              }
-            >
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder={t.selectTimeRange} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="week">{t.last7Days}</SelectItem>
-                <SelectItem value="month">{t.last30Days}</SelectItem>
-                <SelectItem value="year">{t.last12Months}</SelectItem>
-              </SelectContent>
-            </Select>
+        {/* Header Section - Improved for Desktop */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 lg:gap-6 pb-4 border-b">
+          <div className="space-y-1">
+            <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">
+              {t?.reportsTitle || "Reports & Analytics"}
+            </h1>
+            <p className="text-muted-foreground text-sm lg:text-base">
+              {t?.reportsDescription || "Comprehensive insights into your organization's performance"}
+            </p>
           </div>
-          <div className="flex items-center space-x-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 px-2">
-                  <Download className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={handleDownloadCSV}>
-                  {t.downloadAsCSV}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleDownloadPDF}>
-                  {t.downloadAsPDF}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 px-2"
-              onClick={handlePrint}
-            >
-              <Printer className="h-3 w-3" />
-            </Button>
+          
+          {/* Controls Section - Better organized for desktop */}
+          <div className="flex flex-col sm:flex-row gap-3 lg:gap-4">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Select
+                value={selectedReport}
+                onValueChange={(value: ReportType) => setSelectedReport(value)}
+              >
+                <SelectTrigger className="w-full sm:w-[200px] lg:w-[220px]">
+                  <SelectValue placeholder={t.selectReportType} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="overview">{t.overviewDashboard}</SelectItem>
+                  <SelectItem value="monthly">{t.monthlyReport}</SelectItem>
+                  <SelectItem value="member">{t.memberReport}</SelectItem>
+                  <SelectItem value="payment">
+                    {t.paymentDetailsReport}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Select
+                value={timeRange}
+                onValueChange={(value) =>
+                  setTimeRange(value as "week" | "month" | "year")
+                }
+              >
+                <SelectTrigger className="w-full sm:w-[180px] lg:w-[200px]">
+                  <SelectValue placeholder={t.selectTimeRange} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="week">{t.last7Days}</SelectItem>
+                  <SelectItem value="month">{t.last30Days}</SelectItem>
+                  <SelectItem value="year">{t.last12Months}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 px-3">
+                    <Download className="h-4 w-4 mr-2" />
+                    <span className="hidden sm:inline">{t?.export || "Export"}</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleDownloadCSV}>
+                    {t.downloadAsCSV}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDownloadPDF}>
+                    {t.downloadAsPDF}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 px-3"
+                onClick={handlePrint}
+              >
+                <Printer className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">{t?.print || "Print"}</span>
+              </Button>
+            </div>
           </div>
-        </div>{" "}
-        {renderReportContent()}
+        </div>
+        
+        {/* Content Section */}
+        <div className="space-y-6">
+          {renderReportContent()}
+        </div>
       </div>
 
       {/* Print styles */}
