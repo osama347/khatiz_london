@@ -1,3 +1,4 @@
+
 "use client";
 
 import type React from "react";
@@ -60,15 +61,37 @@ import {
   X,
   Plus,
   Trash2,
+  Info,
+  DollarSign,
+  CheckCircle,
+  Download,
+  MoreVertical,
+  MessageCircle,
 } from "lucide-react";
 import useSWR, { mutate } from "swr";
 import { useEffect } from "react";
 import { createClient } from "@/utils/supabase/client";
-import { fetchFullMemberByEmail, updateMemberById } from "@/lib/server/members";
 import { fetchPayments } from "@/lib/server/payments";
 import { fetchEvents } from "@/lib/server/events";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import {
+  fetchUserProfile,
+  updateUserProfile,
+  uploadProfileAvatar,
+  deleteProfileAvatar,
+  addFamilyMember,
+  updateFamilyMember,
+  deleteFamilyMember,
+  validateUpdateProfileForm,
+  validateFamilyMember,
+  getChangedFields,
+  sanitizeProfileData,
+  type ProfileFormData,
+  type UpdateProfileFormData,
+  type FamilyMemberData
+} from "@/lib/server/profile";
+import { Messaging } from "@/components/social/Messaging";
 
 // Types
 interface FamilyMember {
@@ -77,6 +100,29 @@ interface FamilyMember {
   relationship: string;
   phone?: string;
   age?: number;
+}
+
+interface Event {
+  id: string;
+  title: string;
+  description?: string;
+  date: string;
+  event_date: string;
+  location?: string;
+  status: 'upcoming' | 'attended' | 'cancelled' | 'pending';
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface Payment {
+  id: string;
+  amount: number;
+  description: string;
+  status: string;
+  created_at: string;
+  paid_on?: string;
+  active_until?: string;
+  member_id: string;
 }
 
 export default function UserProfile() {
@@ -98,7 +144,7 @@ export default function UserProfile() {
     isLoading: memberLoading,
     error: memberError,
   } = useSWR(userEmail ? ["member-full", userEmail] : null, () =>
-    fetchFullMemberByEmail(userEmail!)
+    fetchUserProfile(userEmail!)
   );
 
   // Fetch payments
@@ -109,15 +155,14 @@ export default function UserProfile() {
       return fetchPayments({ memberId, page: 1, pageSize: 100 });
     }
   );
-  const paymentHistory = paymentsData?.data || [];
+  const paymentHistory: Payment[] = paymentsData?.data || [];
 
-  // Fetch events (optionally filter by member, if needed)
+  // Fetch all events
   const { data: eventsData, isLoading: eventsLoading } = useSWR(
-    userEmail ? ["events", userEmail] : null,
-    () =>
-      fetchEvents({ searchTerm: member?.name || "", page: 1, pageSize: 100 })
+    "all-events",
+    () => fetchEvents({ page: 1, pageSize: 1000 })
   );
-  const events = eventsData?.data || [];
+  const events: Event[] = eventsData?.data || [];
 
   // State for editing, family, etc. (initialize from member when loaded)
   const [isEditing, setIsEditing] = useState(false);
@@ -137,19 +182,11 @@ export default function UserProfile() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
-  // Validation helpers
-  function isValidUKPhone(phone: string | undefined | null) {
-    if (!phone) return true; // treat empty/undefined as valid (or adjust as needed)
-    return /^((\+44\s?7\d{3}|\(?07\d{3}\)?)\s?\d{3}\s?\d{3}|(\+44\s?20|020)\s?\d{4}\s?\d{4})$/.test(
-      phone.trim()
-    );
-  }
-  function isValidUKPostcode(postcode: string | undefined | null) {
-    if (!postcode) return true; // treat empty/undefined as valid (or adjust as needed)
-    return /^([A-Z]{1,2}\d[A-Z\d]? ?\d[A-Z]{2})$/i.test(postcode.trim());
-  }
-  // Error state
+  // Validation state
   const [validationErrors, setValidationErrors] = useState<{
+    [key: string]: string;
+  }>({});
+  const [familyValidationErrors, setFamilyValidationErrors] = useState<{
     [key: string]: string;
   }>({});
 
@@ -250,59 +287,33 @@ export default function UserProfile() {
     setFormData({ ...formData, avatar: member?.avatar || "/placeholder.svg" });
   };
 
-  // Helper to get changed fields
-  function getChangedFields(original: any, updated: any) {
-    const changed: any = {};
-    Object.keys(updated).forEach((key) => {
-      if (typeof updated[key] === "object" && updated[key] !== null) {
-        if (JSON.stringify(updated[key]) !== JSON.stringify(original[key])) {
-          changed[key] = updated[key];
-        }
-      } else if (updated[key] !== original[key]) {
-        changed[key] = updated[key];
-      }
-    });
-    return changed;
-  }
-
   const handleSave = async () => {
     if (!formData || !formData.id) return;
-    // Build updates object with only changed fields
-    const updates = getChangedFields(member, {
-      ...formData,
-      avatar: avatarPreview || formData.avatar,
-      family_members: familyMembers,
-    });
-    // Only validate changed fields
-    const errors: { [key: string]: string } = {};
-    if ("phone" in updates && !isValidUKPhone(updates.phone)) {
-      errors.phone = "Please enter a valid UK phone number.";
-    }
-    if (
-      "emergency_contact_number" in updates &&
-      !isValidUKPhone(updates.emergency_contact_number)
-    ) {
-      errors.emergency_contact_number = "Please enter a valid UK phone number.";
-    }
-    if (
-      "current_postcode" in updates &&
-      !isValidUKPostcode(updates.current_postcode)
-    ) {
-      errors.current_postcode = "Please enter a valid UK postcode.";
-    }
-    // No UK validation for home_postcode
-    if (Object.keys(errors).length > 0) {
-      setValidationErrors(errors);
+    
+    // Validate the entire form using the update schema (excludes email)
+    const validation = validateUpdateProfileForm(formData);
+    if (!validation.isValid) {
+      setValidationErrors(validation.errors);
+      toast.error("Please fix the validation errors before saving.");
       return;
     }
     setValidationErrors({});
+    
+    // Build updates object with only changed fields
+    const processedFormData = {
+      ...formData,
+      avatar: avatarPreview || formData.avatar,
+      family_members: familyMembers,
+    };
+    
+    const updates = getChangedFields(member, processedFormData);
     // Only update if there are changes
     if (Object.keys(updates).length === 0) {
       setIsEditing(false);
       return;
     }
     try {
-      await updateMemberById(formData.id, updates);
+      await updateUserProfile(formData.id, updates);
       mutate(["member-full", formData.email]);
       toast.success("Profile updated successfully!");
       if (avatarPreview) {
@@ -322,6 +333,7 @@ export default function UserProfile() {
       URL.revokeObjectURL(avatarPreview);
       setAvatarPreview(null);
     }
+    setValidationErrors({});
     setIsEditing(false);
   };
 
@@ -393,19 +405,134 @@ export default function UserProfile() {
     setEditingFamily(null);
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
-  };
 
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
-  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
     }).format(amount);
+  };
+
+  const formatDateTime = (dateString: string | null | undefined) => {
+    if (!dateString) return "";
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "";
+      return date.toLocaleString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return "";
+    }
+  };
+
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return "";
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "";
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
+      return "";
+    }
+  };
+
+
+
+  const getPaymentStatus = (payment: Payment): {
+    status: 'expired' | 'about-to-expire' | 'valid' | 'completed' | 'pending';
+    label: string;
+    color: string;
+  } => {
+    const now = new Date();
+    const activeUntil = payment.active_until ? new Date(payment.active_until) : null;
+    
+    // If payment has a paid date, it's completed
+    if (payment.paid_on) {
+      return {
+        status: 'completed',
+        label: 'Completed',
+        color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+      };
+    }
+    
+    if (!activeUntil) {
+      return {
+        status: 'pending',
+        label: 'Pending',
+        color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
+      };
+    }
+    
+    const daysUntilExpiry = Math.ceil((activeUntil.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysUntilExpiry < 0) {
+      return {
+        status: 'expired',
+        label: 'Expired',
+        color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+      };
+    } else if (daysUntilExpiry <= 7) {
+      return {
+        status: 'about-to-expire',
+        label: 'Expires Soon',
+        color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
+      };
+    } else {
+      return {
+        status: 'valid',
+        label: 'Active',
+        color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+      };
+    }
+  };
+
+  const getEventStatus = (event: Event): {
+    status: 'upcoming' | 'ongoing' | 'past' | 'today';
+    label: string;
+    color: string;
+  } => {
+    const now = new Date();
+    const eventDate = new Date(event.date || event.event_date);
+    const daysUntilEvent = Math.ceil((eventDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // Check if it's today
+    const isToday = eventDate.toDateString() === now.toDateString();
+    
+    if (isToday) {
+      return {
+        status: 'today',
+        label: 'Today',
+        color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200'
+      };
+    } else if (daysUntilEvent < 0) {
+      return {
+        status: 'past',
+        label: 'Past',
+        color: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200'
+      };
+    } else if (daysUntilEvent <= 7) {
+      return {
+        status: 'upcoming',
+        label: 'Upcoming',
+        color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
+      };
+    } else {
+      return {
+        status: 'upcoming',
+        label: 'Upcoming',
+        color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+      };
+    }
   };
 
   const relationshipOptions = [
@@ -449,9 +576,6 @@ export default function UserProfile() {
           <ArrowLeft className="h-4 w-4" />
           Back
         </Button>
-        {/* <Button variant="outline" size="sm" onClick={handleSignOut}>
-          Log out
-        </Button> */}
       </div>
       {/* Header Section */}
       <Card className="mb-4 sm:mb-6">
@@ -602,15 +726,31 @@ export default function UserProfile() {
             <CardContent className="p-4 sm:p-6 space-y-4 sm:space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Full Name</Label>
+                  <Label htmlFor="name" className="flex items-center gap-2">
+                    Full Name
+                    <span className="text-red-500">*</span>
+                  </Label>
                   {isEditing ? (
-                    <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) =>
-                        setFormData({ ...formData, name: e.target.value })
-                      }
-                    />
+                    <>
+                      <Input
+                        id="name"
+                        value={formData.name || ""}
+                        onChange={(e) =>
+                          setFormData({ ...formData, name: e.target.value })
+                        }
+                        placeholder="Enter your full name (e.g., John Smith)"
+                        className={validationErrors.name ? "border-red-500" : ""}
+                      />
+                      <div className="flex items-start gap-1 text-xs text-muted-foreground">
+                        <Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                        <span>Only letters, spaces, hyphens, and apostrophes allowed</span>
+                      </div>
+                      {validationErrors.name && (
+                        <div className="text-xs text-red-500 mt-1">
+                          {validationErrors.name}
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="flex items-center gap-2 p-2 bg-muted rounded">
                       <User className="h-4 w-4 flex-shrink-0" />
@@ -621,37 +761,38 @@ export default function UserProfile() {
 
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
-                  {isEditing ? (
-                    <Input
-                      id="email"
-                      type="email"
-                      value={formData.email}
-                      readOnly
-                      className="bg-muted cursor-not-allowed"
-                    />
-                  ) : (
-                    <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                      <Mail className="h-4 w-4 flex-shrink-0" />
-                      <span className="truncate">{formData.email}</span>
+                  <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                    <Mail className="h-4 w-4 flex-shrink-0" />
+                    <span className="truncate">{formData.email}</span>
+                  </div>
+                  {isEditing && (
+                    <div className="flex items-start gap-1 text-xs text-muted-foreground">
+                      <Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                      <span>Email cannot be changed for security reasons</span>
                     </div>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
+                  <Label htmlFor="phone">Phone Number</Label>
                   {isEditing ? (
                     <>
                       <Input
                         id="phone"
-                        value={formData.phone}
+                        value={formData.phone || ""}
                         onChange={(e) =>
                           setFormData({ ...formData, phone: e.target.value })
                         }
-                        placeholder="+44 20 7946 0958"
+                        placeholder="+44 20 7946 0958 or 07123 456789"
                         type="tel"
+                        className={validationErrors.phone ? "border-red-500" : ""}
                       />
+                      <div className="flex items-start gap-1 text-xs text-muted-foreground">
+                        <Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                        <span>UK phone numbers only (mobile: 07xxx xxx xxx, landline: 020 xxxx xxxx)</span>
+                      </div>
                       {validationErrors.phone && (
-                        <div className="text-xs text-destructive mt-1">
+                        <div className="text-xs text-red-500 mt-1">
                           {validationErrors.phone}
                         </div>
                       )}
@@ -659,7 +800,44 @@ export default function UserProfile() {
                   ) : (
                     <div className="flex items-center gap-2 p-2 bg-muted rounded">
                       <Phone className="h-4 w-4 flex-shrink-0" />
-                      <span className="truncate">{formData.phone}</span>
+                      <span className="truncate">{formData.phone || "Not provided"}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="emergency-contact">Emergency Contact Number</Label>
+                  {isEditing ? (
+                    <>
+                      <Input
+                        id="emergency-contact"
+                        value={formData.emergency_contact_number || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            emergency_contact_number: e.target.value,
+                          })
+                        }
+                        placeholder="+44 7911 123456"
+                        type="tel"
+                        className={validationErrors.emergency_contact_number ? "border-red-500" : ""}
+                      />
+                      <div className="flex items-start gap-1 text-xs text-muted-foreground">
+                        <Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                        <span>UK phone number for emergency contact</span>
+                      </div>
+                      {validationErrors.emergency_contact_number && (
+                        <div className="text-xs text-red-500 mt-1">
+                          {validationErrors.emergency_contact_number}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded">
+                      <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                      <span className="truncate">
+                        {formData.emergency_contact_number || "Not provided"}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -667,131 +845,38 @@ export default function UserProfile() {
                 <div className="space-y-2">
                   <Label htmlFor="dob">Date of Birth</Label>
                   {isEditing ? (
-                    <Input
-                      id="dob"
-                      type="date"
-                      value={formData.date_of_birth}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          date_of_birth: e.target.value,
-                        })
-                      }
-                    />
+                    <>
+                      <Input
+                        id="dob"
+                        type="date"
+                        value={formData.date_of_birth || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            date_of_birth: e.target.value,
+                          })
+                        }
+                        className={validationErrors.date_of_birth ? "border-red-500" : ""}
+                        max={new Date().toISOString().split('T')[0]}
+                      />
+                      <div className="flex items-start gap-1 text-xs text-muted-foreground">
+                        <Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                        <span>Must be a valid date in the past</span>
+                      </div>
+                      {validationErrors.date_of_birth && (
+                        <div className="text-xs text-red-500 mt-1">
+                          {validationErrors.date_of_birth}
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="flex items-center gap-2 p-2 bg-muted rounded">
                       <Calendar className="h-4 w-4 flex-shrink-0" />
-                      <span>{formatDate(formData.date_of_birth)}</span>
+                      <span>{formData.date_of_birth ? formatDate(formData.date_of_birth) : "Not provided"}</span>
                     </div>
                   )}
                 </div>
               </div>
-
-              {isEditing && (
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Profile Picture</h3>
-                  <div className="flex flex-col sm:flex-row items-start gap-4">
-                    <div className="relative">
-                      <Avatar className="h-24 w-24">
-                        <AvatarImage
-                          src={
-                            avatarPreview ||
-                            formData.avatar ||
-                            "/placeholder.svg"
-                          }
-                          alt={formData.name}
-                        />
-                        <AvatarFallback className="text-xl">
-                          {formData.name
-                            .split(" ")
-                            .map((n: string) => n[0])
-                            .join("")}
-                        </AvatarFallback>
-                      </Avatar>
-
-                      <div className="absolute -bottom-1 -right-1">
-                        <div className="relative">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleAvatarUpload}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                            disabled={isUploadingAvatar}
-                          />
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            className="h-8 w-8 rounded-full p-0"
-                            disabled={isUploadingAvatar}
-                          >
-                            {isUploadingAvatar ? (
-                              <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                            ) : (
-                              <Edit className="h-3 w-3" />
-                            )}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex-1 space-y-2">
-                      <div>
-                        <h4 className="font-medium">Upload Profile Picture</h4>
-                        <p className="text-sm text-muted-foreground">
-                          Choose a photo that represents you. Recommended size:
-                          400x400px
-                        </p>
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <div className="relative">
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleAvatarUpload}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                            disabled={isUploadingAvatar}
-                          />
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={isUploadingAvatar}
-                            className="w-full sm:w-auto bg-transparent"
-                          >
-                            {isUploadingAvatar ? (
-                              <>
-                                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent mr-2" />
-                                Uploading...
-                              </>
-                            ) : (
-                              <>
-                                <User className="h-4 w-4 mr-2" />
-                                Choose Photo
-                              </>
-                            )}
-                          </Button>
-                        </div>
-
-                        {avatarPreview && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={removeAvatarPreview}
-                            className="w-full sm:w-auto bg-transparent"
-                          >
-                            <X className="h-4 w-4 mr-2" />
-                            Remove
-                          </Button>
-                        )}
-                      </div>
-
-                      <p className="text-xs text-muted-foreground">
-                        Supported formats: JPG, PNG, GIF. Max size: 5MB
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
 
               <Separator />
 
@@ -804,85 +889,57 @@ export default function UserProfile() {
                       <>
                         <Textarea
                           id="current-address"
-                          value={formData.current_address}
+                          value={formData.current_address || ""}
                           onChange={(e) =>
                             setFormData({
                               ...formData,
                               current_address: e.target.value,
                             })
                           }
-                          className="min-h-[80px]"
-                          placeholder="221B Baker St, London NW1 6XE"
+                          placeholder="Enter your current address"
+                          className={validationErrors.current_address ? "border-red-500" : ""}
+                          rows={3}
                         />
-                        <Input
-                          id="current-postcode"
-                          value={formData.current_postcode || ""}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              current_postcode: e.target.value,
-                            })
-                          }
-                          placeholder="NW1 6XE"
-                          className="mt-2"
-                        />
-                        {validationErrors.current_postcode && (
-                          <div className="text-xs text-destructive mt-1">
-                            {validationErrors.current_postcode}
+                        <div className="flex items-start gap-1 text-xs text-muted-foreground">
+                          <Info className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                          <span>Must be at least 10 characters if provided</span>
+                        </div>
+                        {validationErrors.current_address && (
+                          <div className="text-xs text-red-500 mt-1">
+                            {validationErrors.current_address}
                           </div>
                         )}
                       </>
                     ) : (
-                      <div className="flex items-start gap-2 p-2 bg-muted rounded min-h-[80px]">
-                        <MapPin className="h-4 w-4 mt-1 flex-shrink-0" />
+                      <div className="flex items-start gap-2 p-2 bg-muted rounded min-h-[60px]">
+                        <MapPin className="h-4 w-4 flex-shrink-0 mt-0.5" />
                         <span className="text-sm">
-                          {formData.current_address}
-                          {formData.current_postcode
-                            ? `, ${formData.current_postcode}`
-                            : ""}
+                          {formData.current_address || "Not provided"}
                         </span>
                       </div>
                     )}
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="home-address">Home Address</Label>
+                    <Label htmlFor="back-home-address">Back Home Address</Label>
                     {isEditing ? (
-                      <>
-                        <Textarea
-                          id="home-address"
-                          value={formData.back_home_address}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              back_home_address: e.target.value,
-                            })
-                          }
-                          className="min-h-[80px]"
-                          placeholder="10 Downing St, London SW1A 2AA"
-                        />
-                        <Input
-                          id="home-postcode"
-                          value={formData.home_postcode || ""}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              home_postcode: e.target.value,
-                            })
-                          }
-                          placeholder="11000"
-                          className="mt-2"
-                        />
-                        {/* No validation error for home_postcode */}
-                      </>
+                      <Textarea
+                        id="back-home-address"
+                        value={formData.back_home_address || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            back_home_address: e.target.value,
+                          })
+                        }
+                        placeholder="Enter your back home address"
+                        rows={3}
+                      />
                     ) : (
-                      <div className="flex items-start gap-2 p-2 bg-muted rounded min-h-[80px]">
-                        <MapPin className="h-4 w-4 mt-1 flex-shrink-0" />
+                      <div className="flex items-start gap-2 p-2 bg-muted rounded min-h-[60px]">
+                        <MapPin className="h-4 w-4 flex-shrink-0 mt-0.5" />
                         <span className="text-sm">
-                          {formData.back_home_address}
-                          {formData.home_postcode
-                            ? `, ${formData.home_postcode}`
-                            : ""}
+                          {formData.back_home_address || "Not provided"}
                         </span>
                       </div>
                     )}
@@ -892,525 +949,577 @@ export default function UserProfile() {
 
               <Separator />
 
+              {/* Family Members Section */}
               <div className="space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <h3 className="text-lg font-semibold">Emergency & Family</h3>
+                  <h3 className="text-lg font-semibold">Family Members</h3>
+                  {isEditing && (
+                    <Dialog open={isAddingFamily} onOpenChange={setIsAddingFamily}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm" className="w-full sm:w-auto">
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Family Member
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-[425px]">
+                        <DialogHeader>
+                          <DialogTitle>Add Family Member</DialogTitle>
+                          <DialogDescription>
+                            Add a new family member to your profile.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="family-name">Name</Label>
+                            <Input
+                              id="family-name"
+                              value={newFamilyMember.name}
+                              onChange={(e) =>
+                                setNewFamilyMember({
+                                  ...newFamilyMember,
+                                  name: e.target.value,
+                                })
+                              }
+                              placeholder="Enter family member's name"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="family-relationship">Relationship</Label>
+                            <Select
+                              value={newFamilyMember.relationship}
+                              onValueChange={(value) =>
+                                setNewFamilyMember({
+                                  ...newFamilyMember,
+                                  relationship: value,
+                                })
+                              }
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select relationship" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {relationshipOptions.map((option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {option}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="family-phone">Phone (Optional)</Label>
+                            <Input
+                              id="family-phone"
+                              value={newFamilyMember.phone}
+                              onChange={(e) =>
+                                setNewFamilyMember({
+                                  ...newFamilyMember,
+                                  phone: e.target.value,
+                                })
+                              }
+                              placeholder="+44 7911 123456"
+                              type="tel"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="family-age">Age (Optional)</Label>
+                            <Input
+                              id="family-age"
+                              value={newFamilyMember.age || ""}
+                              onChange={(e) =>
+                                setNewFamilyMember({
+                                  ...newFamilyMember,
+                                  age: e.target.value ? parseInt(e.target.value) : undefined,
+                                })
+                              }
+                              placeholder="Enter age"
+                              type="number"
+                              min="0"
+                              max="120"
+                            />
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button variant="outline" onClick={resetFamilyForm}>
+                            Cancel
+                          </Button>
+                          <Button onClick={handleAddFamilyMember}>
+                            Add Member
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="emergency-contact">Emergency Contact</Label>
-                    {isEditing ? (
-                      <>
+                {familyMembers.length > 0 ? (
+                  <div className="grid gap-3">
+                    {familyMembers.map((familyMember) => (
+                      <Card key={familyMember.id} className="p-3 sm:p-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                          <div className="flex items-center gap-3">
+                            <Users className="h-4 w-4 flex-shrink-0" />
+                            <div>
+                              <p className="font-medium">{familyMember.name}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {familyMember.relationship}
+                                {familyMember.age && ` • ${familyMember.age} years old`}
+                              </p>
+                              {familyMember.phone && (
+                                <p className="text-xs text-muted-foreground">
+                                  {familyMember.phone}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          {isEditing && (
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleEditFamilyMember(familyMember)}
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="outline" size="sm">
+                                    <Trash2 className="h-3 w-3" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete Family Member</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to remove {familyMember.name} from your family members?
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleDeleteFamilyMember(familyMember.id)}
+                                    >
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          )}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No family members added yet</p>
+                    {isEditing && (
+                      <p className="text-sm">Click "Add Family Member" to get started</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Edit Family Member Dialog */}
+                <Dialog open={!!editingFamily} onOpenChange={(open) => !open && setEditingFamily(null)}>
+                  <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                      <DialogTitle>Edit Family Member</DialogTitle>
+                      <DialogDescription>
+                        Update family member information.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-family-name">Name</Label>
                         <Input
-                          id="emergency-contact"
-                          value={formData.emergency_contact_number}
+                          id="edit-family-name"
+                          value={newFamilyMember.name}
                           onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              emergency_contact_number: e.target.value,
+                            setNewFamilyMember({
+                              ...newFamilyMember,
+                              name: e.target.value,
+                            })
+                          }
+                          placeholder="Enter family member's name"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-family-relationship">Relationship</Label>
+                        <Select
+                          value={newFamilyMember.relationship}
+                          onValueChange={(value) =>
+                            setNewFamilyMember({
+                              ...newFamilyMember,
+                              relationship: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select relationship" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {relationshipOptions.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-family-phone">Phone (Optional)</Label>
+                        <Input
+                          id="edit-family-phone"
+                          value={newFamilyMember.phone}
+                          onChange={(e) =>
+                            setNewFamilyMember({
+                              ...newFamilyMember,
+                              phone: e.target.value,
                             })
                           }
                           placeholder="+44 7911 123456"
                           type="tel"
                         />
-                        {validationErrors.emergency_contact_number && (
-                          <div className="text-xs text-destructive mt-1">
-                            {validationErrors.emergency_contact_number}
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="flex items-center gap-2 p-2 bg-muted rounded">
-                        <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                        <span className="truncate">
-                          {formData.emergency_contact_number}
-                        </span>
                       </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label>Family Members</Label>
-                      {isEditing && (
-                        <Dialog
-                          open={isAddingFamily}
-                          onOpenChange={setIsAddingFamily}
-                        >
-                          <DialogTrigger asChild>
-                            <Button variant="outline" size="sm">
-                              <Plus className="h-4 w-4 mr-1" />
-                              Add
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
-                            <DialogHeader>
-                              <DialogTitle>Add Family Member</DialogTitle>
-                              <DialogDescription>
-                                Add a new family member to your profile.
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="grid gap-4 py-4">
-                              <div className="space-y-2">
-                                <Label htmlFor="family-name">Name *</Label>
-                                <Input
-                                  id="family-name"
-                                  value={newFamilyMember.name}
-                                  onChange={(e) =>
-                                    setNewFamilyMember({
-                                      ...newFamilyMember,
-                                      name: e.target.value,
-                                    })
-                                  }
-                                  placeholder="Enter full name"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="family-relationship">
-                                  Relationship *
-                                </Label>
-                                <Select
-                                  value={newFamilyMember.relationship}
-                                  onValueChange={(value) =>
-                                    setNewFamilyMember({
-                                      ...newFamilyMember,
-                                      relationship: value,
-                                    })
-                                  }
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select relationship" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {relationshipOptions.map(
-                                      (option: string) => (
-                                        <SelectItem key={option} value={option}>
-                                          {option}
-                                        </SelectItem>
-                                      )
-                                    )}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="family-phone">
-                                  Phone (Optional)
-                                </Label>
-                                <Input
-                                  id="family-phone"
-                                  value={newFamilyMember.phone}
-                                  onChange={(e) =>
-                                    setNewFamilyMember({
-                                      ...newFamilyMember,
-                                      phone: e.target.value,
-                                    })
-                                  }
-                                  placeholder="Enter phone number"
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label htmlFor="family-age">
-                                  Age (Optional)
-                                </Label>
-                                <Input
-                                  id="family-age"
-                                  type="number"
-                                  value={newFamilyMember.age || ""}
-                                  onChange={(e) =>
-                                    setNewFamilyMember({
-                                      ...newFamilyMember,
-                                      age: e.target.value
-                                        ? Number.parseInt(e.target.value)
-                                        : undefined,
-                                    })
-                                  }
-                                  placeholder="Enter age"
-                                />
-                              </div>
-                            </div>
-                            <DialogFooter className="flex-col sm:flex-row gap-2">
-                              <Button
-                                variant="outline"
-                                onClick={resetFamilyForm}
-                                className="w-full sm:w-auto bg-transparent"
-                              >
-                                Cancel
-                              </Button>
-                              <Button
-                                onClick={handleAddFamilyMember}
-                                disabled={
-                                  !newFamilyMember.name ||
-                                  !newFamilyMember.relationship
-                                }
-                                className="w-full sm:w-auto"
-                              >
-                                Add Member
-                              </Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
-                      )}
+                      <div className="space-y-2">
+                        <Label htmlFor="edit-family-age">Age (Optional)</Label>
+                        <Input
+                          id="edit-family-age"
+                          value={newFamilyMember.age || ""}
+                          onChange={(e) =>
+                            setNewFamilyMember({
+                              ...newFamilyMember,
+                              age: e.target.value ? parseInt(e.target.value) : undefined,
+                            })
+                          }
+                          placeholder="Enter age"
+                          type="number"
+                          min="0"
+                          max="120"
+                        />
+                      </div>
                     </div>
-
-                    <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                      {familyMembers.length === 0 ? (
-                        <div className="text-sm text-muted-foreground p-2 bg-muted rounded">
-                          No family members added yet.
-                        </div>
-                      ) : (
-                        familyMembers.map((member: FamilyMember) => (
-                          <div
-                            key={member.id}
-                            className="flex items-center justify-between gap-2 p-2 bg-muted rounded"
-                          >
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                              <Users className="h-4 w-4 flex-shrink-0" />
-                              <div className="min-w-0 flex-1">
-                                <span className="text-sm font-medium block truncate">
-                                  {member.name}
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {member.relationship}
-                                  {member.phone && ` • ${member.phone}`}
-                                  {member.age && ` • Age ${member.age}`}
-                                </span>
-                              </div>
-                            </div>
-                            {isEditing && (
-                              <div className="flex gap-1 flex-shrink-0">
-                                <Dialog
-                                  open={editingFamily?.id === member.id}
-                                  onOpenChange={(open) => {
-                                    if (!open) {
-                                      setEditingFamily(null);
-                                      resetFamilyForm();
-                                    }
-                                  }}
-                                >
-                                  <DialogTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() =>
-                                        handleEditFamilyMember(member)
-                                      }
-                                      className="h-8 w-8 p-0"
-                                    >
-                                      <Edit className="h-3 w-3" />
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
-                                    <DialogHeader>
-                                      <DialogTitle>
-                                        Edit Family Member
-                                      </DialogTitle>
-                                      <DialogDescription>
-                                        Update the details of this family
-                                        member.
-                                      </DialogDescription>
-                                    </DialogHeader>
-                                    <div className="grid gap-4 py-4">
-                                      <div className="space-y-2">
-                                        <Label htmlFor="edit-family-name">
-                                          Name *
-                                        </Label>
-                                        <Input
-                                          id="edit-family-name"
-                                          value={newFamilyMember.name}
-                                          onChange={(e) =>
-                                            setNewFamilyMember({
-                                              ...newFamilyMember,
-                                              name: e.target.value,
-                                            })
-                                          }
-                                          placeholder="Enter full name"
-                                        />
-                                      </div>
-                                      <div className="space-y-2">
-                                        <Label htmlFor="edit-family-relationship">
-                                          Relationship *
-                                        </Label>
-                                        <Select
-                                          value={newFamilyMember.relationship}
-                                          onValueChange={(value) =>
-                                            setNewFamilyMember({
-                                              ...newFamilyMember,
-                                              relationship: value,
-                                            })
-                                          }
-                                        >
-                                          <SelectTrigger>
-                                            <SelectValue placeholder="Select relationship" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            {relationshipOptions.map(
-                                              (option: string) => (
-                                                <SelectItem
-                                                  key={option}
-                                                  value={option}
-                                                >
-                                                  {option}
-                                                </SelectItem>
-                                              )
-                                            )}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-                                      <div className="space-y-2">
-                                        <Label htmlFor="edit-family-phone">
-                                          Phone (Optional)
-                                        </Label>
-                                        <Input
-                                          id="edit-family-phone"
-                                          value={newFamilyMember.phone}
-                                          onChange={(e) =>
-                                            setNewFamilyMember({
-                                              ...newFamilyMember,
-                                              phone: e.target.value,
-                                            })
-                                          }
-                                          placeholder="Enter phone number"
-                                        />
-                                      </div>
-                                      <div className="space-y-2">
-                                        <Label htmlFor="edit-family-age">
-                                          Age (Optional)
-                                        </Label>
-                                        <Input
-                                          id="edit-family-age"
-                                          type="number"
-                                          value={newFamilyMember.age || ""}
-                                          onChange={(e) =>
-                                            setNewFamilyMember({
-                                              ...newFamilyMember,
-                                              age: e.target.value
-                                                ? Number.parseInt(
-                                                    e.target.value
-                                                  )
-                                                : undefined,
-                                            })
-                                          }
-                                          placeholder="Enter age"
-                                        />
-                                      </div>
-                                    </div>
-                                    <DialogFooter className="flex-col sm:flex-row gap-2">
-                                      <Button
-                                        variant="outline"
-                                        onClick={() => {
-                                          setEditingFamily(null);
-                                          resetFamilyForm();
-                                        }}
-                                        className="w-full sm:w-auto"
-                                      >
-                                        Cancel
-                                      </Button>
-                                      <Button
-                                        onClick={handleUpdateFamilyMember}
-                                        disabled={
-                                          !newFamilyMember.name ||
-                                          !newFamilyMember.relationship
-                                        }
-                                        className="w-full sm:w-auto"
-                                      >
-                                        Update Member
-                                      </Button>
-                                    </DialogFooter>
-                                  </DialogContent>
-                                </Dialog>
-
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-8 w-8 p-0 text-destructive"
-                                    >
-                                      <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>
-                                        Delete Family Member
-                                      </AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        Are you sure you want to remove{" "}
-                                        {member.name} from your family members?
-                                        This action cannot be undone.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>
-                                        Cancel
-                                      </AlertDialogCancel>
-                                      <AlertDialogAction
-                                        onClick={() =>
-                                          handleDeleteFamilyMember(member.id)
-                                        }
-                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                      >
-                                        Delete
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-                              </div>
-                            )}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-muted-foreground">
-                <div>
-                  <strong>Member Since:</strong>{" "}
-                  {formatDate(formData.join_date)}
-                </div>
-                <div>
-                  <strong>Account Created:</strong>{" "}
-                  {formatDateTime(formData.created_at)}
-                </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setEditingFamily(null)}>
+                        Cancel
+                      </Button>
+                      <Button onClick={handleUpdateFamilyMember}>
+                        Update Member
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
               </div>
             </CardContent>
-          </Card>
+            </Card>
         </TabsContent>
 
-        {/* Payment History Tab */}
+        {/* Payments Tab */}
         <TabsContent value="payments">
-          <Card>
-            <CardHeader className="p-4 sm:p-6">
-              <CardTitle className="text-lg sm:text-xl">
-                Payment History
-              </CardTitle>
-              <CardDescription className="text-sm">
-                View your subscription and payment records
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-6">
-              <div className="space-y-4">
-                {paymentsLoading ? (
-                  <div className="text-center py-8">
-                    Loading payment history...
+          <div className="space-y-6">
+            {/* Payment Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-blue-900 dark:text-blue-100">Total Spent</CardTitle>
+                  <DollarSign className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                    {formatCurrency(paymentHistory.reduce((sum: number, p: any) => sum + p.amount, 0))}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950 dark:to-red-900 border-red-200 dark:border-red-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-red-900 dark:text-red-100">Expired</CardTitle>
+                  <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold text-red-900 dark:text-red-100">
+                    {paymentHistory.filter((p: Payment) => getPaymentStatus(p).status === "expired").length}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900 border-orange-200 dark:border-orange-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-orange-900 dark:text-orange-100">Due Soon</CardTitle>
+                  <Calendar className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold text-orange-900 dark:text-orange-100">
+                    {paymentHistory.filter((p: Payment) => getPaymentStatus(p).status === "about-to-expire").length}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 border-green-200 dark:border-green-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-green-900 dark:text-green-100">Completed</CardTitle>
+                  <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold text-green-900 dark:text-green-100">
+                    {paymentHistory.filter((p: Payment) => getPaymentStatus(p).status === "completed").length}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 border-purple-200 dark:border-purple-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-purple-900 dark:text-purple-100">Total Payments</CardTitle>
+                  <CreditCard className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
+                    {paymentHistory.length}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Payment History */}
+            <Card>
+              <CardHeader className="p-4 sm:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg sm:text-xl">Payment History</CardTitle>
+                    <CardDescription className="text-sm">
+                      Track your payment transactions and history
+                    </CardDescription>
                   </div>
-                ) : paymentHistory.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No payment history found.
+                  <Button variant="outline" size="sm">
+                    <Download className="h-4 w-4 mr-2" />
+                    Export
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                {paymentsLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : paymentHistory.length > 0 ? (
+                  <div className="divide-y">
+                    {paymentHistory.map((payment: Payment) => (
+                      <div key={payment.id} className="p-4 hover:bg-muted/50 transition-colors">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                          <div className="flex items-center gap-4">
+                            <div className="p-2 rounded-full bg-primary/10">
+                              <CreditCard className="h-5 w-5 text-primary" />
+                            </div>
+                            <div>
+                              <p className="font-semibold text-sm">{payment.description}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {formatDateTime(payment.created_at)}
+                              </p>
+                              {payment.active_until && (
+                                <p className="text-xs text-muted-foreground">
+                                  Active until: {formatDate(payment.active_until)}
+                                </p>
+                              )}
+                              {payment.paid_on && (
+                                <p className="text-xs text-muted-foreground">
+                                  Paid: {formatDateTime(payment.paid_on)}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <div className="text-right">
+                              <p className="font-bold text-sm">{formatCurrency(payment.amount)}</p>
+                              <Badge
+                                className={`text-xs ${getPaymentStatus(payment).color}`}>
+                                {getPaymentStatus(payment).label}
+                              </Badge>
+                            </div>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ) : (
-                  paymentHistory.map((payment: any) => (
-                    <div
-                      key={payment.id}
-                      className="flex flex-col gap-3 p-3 sm:p-4 border rounded-lg"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-green-100 rounded-full flex-shrink-0">
-                          <CreditCard className="h-4 w-4 text-green-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium">
-                            {formatCurrency(payment.amount)}
-                          </p>
-                          <p className="text-sm text-muted-foreground truncate">
-                            Paid on {formatDateTime(payment.paid_on)}
-                          </p>
-                        </div>
-                        {/* Expired badge */}
-                        {payment.active_until &&
-                          new Date(payment.active_until) < new Date() && (
-                            <Badge
-                              variant="destructive"
-                              className="text-xs ml-2"
-                            >
-                              Expired
-                            </Badge>
-                          )}
-                      </div>
-                      <div className="flex justify-end">
-                        <Badge variant="outline" className="text-xs">
-                          Active until {formatDate(payment.active_until)}
-                        </Badge>
-                      </div>
+                  <div className="text-center py-12">
+                    <div className="mx-auto h-12 w-12 text-muted-foreground mb-4">
+                      <CreditCard className="h-12 w-12 opacity-50" />
                     </div>
-                  ))
+                    <h3 className="text-lg font-semibold mb-2">No payments found</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      You haven't made any payments yet.
+                    </p>
+                    <Button variant="outline" size="sm">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Make First Payment
+                    </Button>
+                  </div>
                 )}
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* Events Tab */}
         <TabsContent value="events">
-          <Card>
-            <CardHeader className="p-4 sm:p-6">
-              <CardTitle className="text-lg sm:text-xl">Events</CardTitle>
-              <CardDescription className="text-sm">
-                Events you're registered for or interested in
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-4 sm:p-6">
-              <div className="space-y-4">
+          <div className="space-y-6">
+            {/* Events Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 border-purple-200 dark:border-purple-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-purple-900 dark:text-purple-100">Today</CardTitle>
+                  <Calendar className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
+                    {events.filter((e: Event) => getEventStatus(e).status === "today").length}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-950 dark:to-orange-900 border-orange-200 dark:border-orange-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-orange-900 dark:text-orange-100">This Week</CardTitle>
+                  <Calendar className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold text-orange-900 dark:text-orange-100">
+                    {events.filter((e: Event) => getEventStatus(e).status === "upcoming" && getEventStatus(e).label === "Upcoming").length}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-950 dark:to-gray-900 border-gray-200 dark:border-gray-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-gray-900 dark:text-gray-100">Past</CardTitle>
+                  <CheckCircle className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                    {events.filter((e: Event) => getEventStatus(e).status === "past").length}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm font-medium text-blue-900 dark:text-blue-100">Total</CardTitle>
+                  <Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">
+                    {events.length}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Events List */}
+            <Card>
+              <CardHeader className="p-4 sm:p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg sm:text-xl">Events & Activities</CardTitle>
+                    <CardDescription className="text-sm">
+                      Discover and track your community events
+                    </CardDescription>
+                  </div>
+                  <TabsTrigger value="events" className="flex-1 sm:flex-none">
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Events
+                  </TabsTrigger>
+                  <TabsTrigger value="messages" className="flex-1 sm:flex-none">
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    Messages
+                  </TabsTrigger>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
                 {eventsLoading ? (
-                  <div className="text-center py-8">Loading events...</div>
-                ) : events.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    No events found.
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  </div>
+                ) : events.length > 0 ? (
+                  <div className="divide-y">
+                    {events.map((event: Event) => {
+                      const eventStatus = getEventStatus(event);
+                      
+                      return (
+                        <div key={event.id} className="p-4 hover:bg-muted/50 transition-colors">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                            <div className="flex items-start gap-4">
+                              <div className={`p-2 rounded-full ${eventStatus.status === 'today' ? 'bg-purple-100 dark:bg-purple-900' : 
+                                eventStatus.status === 'upcoming' ? 'bg-blue-100 dark:bg-blue-900' : 
+                                'bg-gray-100 dark:bg-gray-800'}`}>
+                                <Calendar className={`h-5 w-5 ${eventStatus.status === 'today' ? 'text-purple-600 dark:text-purple-400' : 
+                                  eventStatus.status === 'upcoming' ? 'text-blue-600 dark:text-blue-400' : 
+                                  'text-gray-600 dark:text-gray-400'}`} />
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-semibold text-sm">{event.title}</p>
+                                  <Badge className={`text-xs ${eventStatus.color}`}>
+                                    {eventStatus.label}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground mb-1">
+                                  {formatDateTime(event.date || event.event_date)}
+                                </p>
+                                {event.description && (
+                                  <p className="text-xs text-muted-foreground line-clamp-2">
+                                    {event.description}
+                                  </p>
+                                )}
+                                {event.location && (
+                                  <p className="text-xs text-muted-foreground">
+                                    <MapPin className="inline h-3 w-3 mr-1" />
+                                    {event.location}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button variant="ghost" size="sm" className="h-8 px-3 text-xs">
+                                Details
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
-                  events.map((event: any) => (
-                    <div
-                      key={event.id}
-                      className="p-3 sm:p-4 border rounded-lg"
-                    >
-                      <div className="space-y-3">
-                        <div>
-                          <h3 className="font-semibold text-base sm:text-lg">
-                            {event.title}
-                          </h3>
-                          <p className="text-muted-foreground mt-1 text-sm">
-                            {event.description}
-                          </p>
-                        </div>
-                        <div className="flex flex-col gap-2 text-sm">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="h-4 w-4 flex-shrink-0" />
-                            <span>{formatDate(event.event_date)}</span>
-                            {/* Past Event badge */}
-                            {event.event_date &&
-                              new Date(event.event_date) < new Date() && (
-                                <Badge
-                                  variant="secondary"
-                                  className="text-xs ml-2"
-                                >
-                                  Past Event
-                                </Badge>
-                              )}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <MapPin className="h-4 w-4 flex-shrink-0" />
-                            <span className="truncate">{event.location}</span>
-                          </div>
-                        </div>
-                        <div className="flex justify-end">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full sm:w-auto bg-transparent"
-                          >
-                            View Details
-                          </Button>
-                        </div>
-                      </div>
+                  <div className="text-center py-12">
+                    <div className="mx-auto h-12 w-12 text-muted-foreground mb-4">
+                      <Calendar className="h-12 w-12 opacity-50" />
                     </div>
-                  ))
+                    <h3 className="text-lg font-semibold mb-2">No events found</h3>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      You haven't joined any events yet.
+                    </p>
+                    <Button variant="outline" size="sm">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Browse Events
+                    </Button>
+                  </div>
                 )}
-              </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="messages" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Messages</CardTitle>
+              <CardDescription>
+                Connect with other members of the community
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {member && (
+                <Messaging currentUser={{ id: member.id, name: member.name, avatar: member.avatar }} />
+              )}
             </CardContent>
           </Card>
         </TabsContent>
