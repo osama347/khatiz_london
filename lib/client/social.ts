@@ -123,7 +123,8 @@ export async function fetchPosts(memberId?: string) {
         *,
         member:members(id, name, avatar),
         likes:likes(count),
-        comments:comments(count)
+        comments:comments(count),
+        user_like:likes(id, member_id)
       `)
       .order("created_at", { ascending: false });
 
@@ -138,6 +139,7 @@ export async function fetchPosts(memberId?: string) {
       ...post,
       likes: post.likes?.[0]?.count || 0,
       comments: post.comments?.[0]?.count || 0,
+      has_liked: Array.isArray(post.user_like) && post.user_like.some((like: any) => like.member_id === user.id),
     }));
   } catch (error) {
     console.error("Error in fetchPosts:", error);
@@ -231,7 +233,18 @@ export async function deleteComment(commentId: string, memberId: string) {
 // Likes
 export async function likePost(postId: number, memberId: string) {
   const supabase = createClient();
-  
+
+  // Check if already liked
+  const { data: existing, error: checkError } = await supabase
+    .from("likes")
+    .select("id")
+    .eq("post_id", postId)
+    .eq("member_id", memberId)
+    .single();
+
+  if (checkError && checkError.code !== "PGRST116") throw checkError;
+  if (existing) return; // Already liked, do nothing
+
   const { error } = await supabase
     .from("likes")
     .insert({ post_id: postId, member_id: memberId });

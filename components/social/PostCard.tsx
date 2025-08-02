@@ -30,22 +30,31 @@ export function PostCard({ post, currentUserId, onUpdate }: PostCardProps) {
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [comments, setComments] = useState<Comment[]>([]);
-  const [isLiked, setIsLiked] = useState(post.has_liked || false);
+  const [isLiked, setIsLiked] = useState(!!post.has_liked);
   const [likeCount, setLikeCount] = useState(post.likes || 0);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleLike = async () => {
+    if (isLiked) return; // Prevent double-like
     try {
       setIsLoading(true);
-      if (isLiked) {
-        await unlikePost(post.id, currentUserId);
-        setIsLiked(false);
-        setLikeCount(prev => prev - 1);
-      } else {
-        await likePost(post.id, currentUserId);
-        setIsLiked(true);
-        setLikeCount(prev => prev + 1);
-      }
+      await likePost(post.id, currentUserId);
+      setIsLiked(true);
+      setLikeCount(prev => prev + 1);
+    } catch (error) {
+      toast.error("Failed to update like");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUnlike = async () => {
+    if (!isLiked) return;
+    try {
+      setIsLoading(true);
+      await unlikePost(post.id, currentUserId);
+      setIsLiked(false);
+      setLikeCount(prev => Math.max(0, prev - 1));
     } catch (error) {
       toast.error("Failed to update like");
     } finally {
@@ -141,13 +150,14 @@ export function PostCard({ post, currentUserId, onUpdate }: PostCardProps) {
             <Button
               variant="ghost"
               size="sm"
-              onClick={handleLike}
-              disabled={isLoading}
-              className={isLiked ? "text-red-500" : ""}
+              className={`h-8 w-8 p-0 text-muted-foreground hover:text-red-500 hover:bg-red-50 ${isLiked ? "text-red-500" : ""}`}
+              onClick={isLiked ? handleUnlike : handleLike}
+              disabled={isLoading || (isLiked && !onUpdate)}
+              aria-label={isLiked ? "Unlike post" : "Like post"}
             >
-              <Heart className={`h-4 w-4 mr-1 ${isLiked ? "fill-current" : ""}`} />
-              {likeCount}
+              <Heart className={`w-4 h-4 ${isLiked ? "fill-red-500" : ""}`} />
             </Button>
+            <span className="text-xs ml-1">{likeCount}</span>
             
             <Button
               variant="ghost"
